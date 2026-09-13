@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.humanize',
-    'Chai_and_Trails.apps.ChaiAndTrailsConfig',
+    'forum.apps.ForumConfig',
 ]
 
 MIDDLEWARE = [
