@@ -1,0 +1,34 @@
+{% load humanize %}
+<li class="node{% if forum.fresh %} node--fresh{% endif %}">
+  <span class="node__marker">
+<svg class="marker" width="26" height="30" viewBox="0 0 26 30" aria-hidden="true" focusable="false">
+  <path class="marker__post" d="M1.25 12a11.75 11.75 0 0 1 23.5 0v14.75a2 2 0 0 1-2 2H3.25a2 2 0 0 1-2-2Z" stroke-width="1.5"/>
+  <path class="marker__cap" d="M1.25 12a11.75 11.75 0 0 1 23.5 0v1.5H1.25Z"/>
+  <text class="marker__text" x="13" y="23" text-anchor="middle">KM</text>
+</svg>
+  </span>
+  <div class="node__main">
+    <h3 class="node__title"><a href="{% url 'forum' forum.slug %}">{{ forum.title }}</a></h3>
+    <p class="node__desc">{{ forum.description }}</p>
+    {% if show_subs and forum.children %}
+      <ul class="node__subs">
+        {% for sub in forum.children %}
+          <li><a href="{% url 'forum' sub.slug %}">{{ sub.title }}</a></li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+  <dl class="node__stats">
+    <div><dt>Threads</dt><dd>{{ forum.threads|intcomma }}</dd></div>
+    <div><dt>Posts</dt><dd>{{ forum.posts|intcomma }}</dd></div>
+  </dl>
+  <div class="node__last last">
+    <span class="avatar tone-{{ forum.last_post.tone }}" aria-hidden="true">{{ forum.last_post.author|first }}</span>
+    <span>
+      <a class="last__title" href="{% url 'thread' %}">{{ forum.last_post.title }}</a>
+      <span class="last__meta">
+        <a href="profile.html">{{ forum.last_post.author }}</a> &middot; {{ forum.last_post.when }}
+      </span>
+    </span>
+  </div>
+</li>

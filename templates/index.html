@@ -1,0 +1,1103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chai &amp; Trails: India travel forum</title>
+<meta name="description" content="A travel forum for road trips, treks and slow journeys across India.">
+<meta name="theme-color" content="#0c5c43">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Karla:ital,wght@0,400;0,500;0,700;1,400&family=Zilla+Slab:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ==========================================================================
+   Chai & Trails
+   Palette and structure borrowed from Indian highway signage: board green,
+   milestone yellow, brick chai. Forum row layout follows the classic
+   category / node / thread / post hierarchy.
+   ========================================================================== */
+
+/* --- 1. Tokens ---------------------------------------------------------- */
+
+:root {
+  --paper:        #eff2ed;
+  --card:         #ffffff;
+  --sunk:         #f5f8f3;
+  --ink:          #12241e;
+  --muted:        #566a5f;
+  --faint:        #83968b;
+  --rule:         #d8e0d7;
+  --rule-firm:    #c2cfc0;
+
+  --sign:         #0c5c43;
+  --sign-deep:    #073a2a;
+  --sign-lift:    #127a59;
+  --milestone:    #f2b01e;
+  --milestone-lo: #c88d06;
+  --chai:         #9c4a21;
+
+  --link:         #0e6b4e;
+  --link-hover:   #9c4a21;
+  --focus:        #f2b01e;
+
+  --shell:        1180px;
+  --gutter:       1.25rem;
+
+  --r-block:      8px;
+  --r-ctl:        4px;
+  --r-pill:       999px;
+
+  --t-xs:         0.75rem;
+  --t-sm:         0.8125rem;
+  --t-base:       0.9375rem;
+  --t-md:         1.0625rem;
+  --t-lg:         1.375rem;
+  --t-xl:         1.875rem;
+
+  --sans:         'Karla', 'Segoe UI', system-ui, -apple-system, Helvetica, Arial, sans-serif;
+  --slab:         'Zilla Slab', Georgia, 'Times New Roman', serif;
+
+  --board-lift:   0 1px 0 rgba(7, 58, 42, .18);
+  color-scheme:   light;
+}
+
+[data-theme="dark"] {
+  --paper:        #0d1613;
+  --card:         #141f1b;
+  --sunk:         #101a16;
+  --ink:          #e4ece6;
+  --muted:        #9aaba1;
+  --faint:        #7b8c83;
+  --rule:         #24322c;
+  --rule-firm:    #31423a;
+
+  --sign:         #0f6f51;
+  --sign-deep:    #0a4835;
+  --sign-lift:    #17a077;
+  --link:         #4fc39b;
+  --link-hover:   #f0a85e;
+  --chai:         #d9793f;
+  color-scheme:   dark;
+}
+
+/* --- 2. Base ------------------------------------------------------------ */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 var(--t-base)/1.65 var(--sans);
+  font-feature-settings: 'tnum' 1;
+}
+
+h1, h2, h3, h4 { font-family: var(--slab); font-weight: 600; line-height: 1.2; margin: 0; }
+
+a { color: var(--link); text-decoration: none; }
+a:hover { color: var(--link-hover); text-decoration: underline; text-underline-offset: 2px; }
+
+img { max-width: 100%; display: block; }
+p { margin: 0 0 0.9em; }
+ul, ol { margin: 0; padding: 0; }
+li { list-style: none; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.shell {
+  width: 100%;
+  max-width: var(--shell);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--milestone);
+  color: #12241e;
+  padding: 0.6rem 1rem;
+  z-index: 60;
+  font-weight: 700;
+}
+.skip:focus { left: 0; }
+
+.only-screenreader {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* --- 3. Utility bar ----------------------------------------------------- */
+
+.utility {
+  background: var(--sign-deep);
+  color: #cbdcd4;
+  font-size: var(--t-sm);
+}
+.utility a { color: #cbdcd4; }
+.utility a:hover { color: var(--milestone); text-decoration: none; }
+
+.utility__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 34px;
+}
+.utility__set { display: flex; gap: 1.15rem; flex-wrap: wrap; }
+.utility__set a { padding: 0.35rem 0; }
+
+.utility__me { display: flex; align-items: center; gap: 0.75rem; }
+
+/* --- 4. Masthead -------------------------------------------------------- */
+
+.masthead {
+  background: var(--sign);
+  color: #fff;
+  border-bottom: 3px solid var(--milestone);
+  box-shadow: var(--board-lift);
+}
+
+.masthead__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding-block: 1.15rem;
+}
+
+/* The brand sits inside a white hairline box, the way route boards are set. */
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  color: #fff;
+  padding: 0.5rem 1rem 0.55rem;
+  border: 2px solid rgba(255, 255, 255, .78);
+  border-radius: 5px;
+}
+.brand:hover { color: #fff; text-decoration: none; border-color: var(--milestone); }
+.brand:hover .brand__mark { transform: translateY(-2px); }
+
+.brand__mark { transition: transform .18s ease; flex: none; }
+
+.brand__name {
+  font-family: var(--slab);
+  font-weight: 700;
+  font-size: 1.7rem;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  display: block;
+}
+.brand__name em { font-style: normal; color: var(--milestone); }
+.brand__strap {
+  display: block;
+  font-size: var(--t-xs);
+  letter-spacing: 0.02em;
+  color: #b9d3c8;
+  margin-top: 0.25rem;
+}
+
+.hunt { position: relative; flex: 0 1 22rem; }
+.hunt input {
+  width: 100%;
+  font: 400 var(--t-base) var(--sans);
+  padding: 0.6rem 2.6rem 0.6rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: var(--r-ctl);
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+}
+.hunt input::placeholder { color: #a9c6ba; }
+.hunt input:focus { background: #fff; color: var(--ink); border-color: var(--milestone); }
+.hunt input:focus::placeholder { color: var(--faint); }
+.hunt button {
+  position: absolute;
+  right: 4px; top: 4px; bottom: 4px;
+  width: 2.1rem;
+  border: 0;
+  background: transparent;
+  color: #cfe3d9;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.hunt input:focus + button { color: var(--sign); }
+
+/* --- 5. Primary nav ----------------------------------------------------- */
+
+.mainnav { background: var(--card); border-bottom: 1px solid var(--rule); position: relative; }
+
+.mainnav__inner { display: flex; align-items: stretch; gap: 0.25rem; }
+
+.mainnav__list { display: flex; flex-wrap: wrap; }
+
+.mainnav a {
+  display: block;
+  padding: 0.85rem 1rem;
+  color: var(--ink);
+  font-weight: 500;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+}
+.mainnav a:hover { color: var(--chai); text-decoration: none; background: var(--sunk); }
+.mainnav a[aria-current="page"] { border-bottom-color: var(--milestone); color: var(--sign); }
+[data-theme="dark"] .mainnav a[aria-current="page"] { color: var(--link); }
+
+.mainnav__burger {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  background: none;
+  border: 0;
+  font: 500 var(--t-base) var(--sans);
+  color: var(--ink);
+  padding: 0.85rem 0;
+  cursor: pointer;
+}
+
+.theme-toggle {
+  margin-left: auto;
+  align-self: center;
+  background: none;
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  font: 500 var(--t-sm) var(--sans);
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+}
+.theme-toggle:hover { color: var(--chai); border-color: var(--chai); }
+
+/* --- 6. Breadcrumb ------------------------------------------------------ */
+
+.crumbs { background: var(--sunk); border-bottom: 1px solid var(--rule); font-size: var(--t-sm); }
+.crumbs ol { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; padding: 0.6rem 0; }
+.crumbs li { color: var(--muted); display: flex; align-items: center; gap: 0.4rem; }
+.crumbs li + li::before { content: '/'; color: var(--faint); }
+.crumbs [aria-current] { color: var(--ink); font-weight: 500; }
+
+/* --- 7. Page frame ------------------------------------------------------ */
+
+.page { padding: 1.5rem 0 3rem; }
+
+.layout { display: grid; gap: 1.5rem; }
+.layout--split { grid-template-columns: minmax(0, 1fr) 20rem; }
+
+.pagehead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+.pagehead h1 { font-size: var(--t-xl); letter-spacing: -0.015em; }
+.pagehead p { color: var(--muted); margin: 0.3rem 0 0; max-width: 52ch; }
+.pagehead__side { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* --- 8. Buttons and chips ---------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font: 700 var(--t-sm) var(--sans);
+  padding: 0.55rem 1rem;
+  border-radius: var(--r-ctl);
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: var(--card);
+  color: var(--ink);
+  border-color: var(--rule-firm);
+}
+.btn:hover { text-decoration: none; border-color: var(--sign); color: var(--sign); }
+
+.btn--go { background: var(--milestone); border-color: var(--milestone-lo); color: #241a02; }
+.btn--go:hover { background: var(--milestone-lo); color: #241a02; border-color: var(--milestone-lo); }
+
+.btn--board { background: var(--sign); border-color: var(--sign); color: #fff; }
+.btn--board:hover { background: var(--sign-deep); color: #fff; border-color: var(--sign-deep); }
+
+.btn--quiet { background: transparent; border-color: transparent; color: var(--muted); padding-inline: 0.5rem; }
+.btn--quiet:hover { color: var(--chai); border-color: transparent; }
+
+.chip {
+  display: inline-block;
+  font-size: var(--t-xs);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  padding: 0.1rem 0.5rem;
+  border-radius: 3px;
+  background: var(--sunk);
+  color: var(--muted);
+  border: 1px solid var(--rule);
+}
+.chip--pinned { background: #fdf2d4; color: #7a5405; border-color: #eccf82; }
+.chip--closed { background: #ecefea; color: #5c6b62; }
+.chip--route  { background: #e3f0e9; color: #0c5c43; border-color: #bcd9c9; }
+[data-theme="dark"] .chip--pinned { background: #3a2c07; color: #f3c860; border-color: #5c4712; }
+[data-theme="dark"] .chip--route  { background: #103227; color: #6fd3ab; border-color: #1d4c3a; }
+
+/* --- 9. Blocks (category containers) ------------------------------------ */
+
+.block {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-block);
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+}
+
+.block__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--sign);
+  color: #fff;
+  padding: 0.6rem 1rem;
+  border-bottom: 2px solid var(--milestone);
+}
+.block__bar h2 { font-size: var(--t-md); letter-spacing: 0.005em; }
+.block__bar a { color: #cfe3d9; font-size: var(--t-sm); }
+.block__bar a:hover { color: var(--milestone); }
+
+.block__bar--plain {
+  background: var(--sunk);
+  color: var(--ink);
+  border-bottom: 1px solid var(--rule);
+}
+.block__bar--plain h2 { font-size: var(--t-base); }
+.block__bar--plain a { color: var(--link); }
+
+.block__foot {
+  padding: 0.6rem 1rem;
+  background: var(--sunk);
+  border-top: 1px solid var(--rule);
+  font-size: var(--t-sm);
+  color: var(--muted);
+}
+
+.block__body { padding: 1rem; }
+
+/* --- 10. Node rows (forums inside a category) --------------------------- */
+
+.node {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(0, 1fr) 7.5rem minmax(0, 15rem);
+  gap: 1rem;
+  align-items: center;
+  padding: 0.95rem 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+.node:last-child { border-bottom: 0; }
+.node:hover { background: var(--sunk); }
+
+.node__title { font-size: var(--t-md); margin-bottom: 0.15rem; }
+.node__title a { color: var(--ink); }
+.node__title a:hover { color: var(--chai); }
+.node__desc { color: var(--muted); font-size: var(--t-sm); margin: 0; }
+
+.node__subs { display: flex; flex-wrap: wrap; gap: 0.15rem 0.9rem; margin-top: 0.45rem; font-size: var(--t-sm); }
+.node__subs a { color: var(--link); }
+
+.node__stats { display: flex; flex-direction: column; gap: 0.15rem; margin: 0; font-size: var(--t-sm); }
+.node__stats div { display: flex; justify-content: space-between; gap: 0.5rem; }
+.node__stats dt { color: var(--faint); }
+.node__stats dd { margin: 0; font-weight: 700; }
+
+/* Milestone marker: yellow cap when the forum has unread posts. */
+.marker__cap { fill: var(--rule-firm); }
+.marker__post { fill: var(--card); stroke: var(--rule-firm); }
+.marker__text { fill: var(--faint); font: 700 8px var(--sans); }
+.node--fresh .marker__cap { fill: var(--milestone); }
+.node--fresh .marker__post { stroke: var(--sign); }
+.node--fresh .marker__text { fill: var(--sign); }
+
+/* --- 11. Last-post cell ------------------------------------------------- */
+
+.last {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  font-size: var(--t-sm);
+  min-width: 0;
+}
+.last__title {
+  display: block;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.last__meta { color: var(--faint); font-size: var(--t-xs); }
+.last__meta a { color: var(--muted); }
+
+/* --- 12. Avatars -------------------------------------------------------- */
+
+.avatar {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  font-family: var(--slab);
+  font-weight: 700;
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.avatar--lg { width: 4.5rem; height: 4.5rem; font-size: 2rem; border-radius: 7px; }
+.avatar--sm { width: 1.6rem; height: 1.6rem; font-size: 0.75rem; border-radius: 4px; }
+.avatar:hover { text-decoration: none; }
+
+.tone-1 { background: #0c5c43; }
+.tone-2 { background: #9c4a21; }
+.tone-3 { background: #2d5f7a; }
+.tone-4 { background: #6b4a86; }
+.tone-5 { background: #a8862a; }
+.tone-6 { background: #4b6b2f; }
+
+/* --- 13. Thread list ---------------------------------------------------- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 1rem;
+  background: var(--sunk);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-block);
+  margin-bottom: 1.25rem;
+}
+.toolbar__filters { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.toolbar__filters a {
+  font-size: var(--t-sm);
+  padding: 0.25rem 0.7rem;
+  border-radius: var(--r-pill);
+  color: var(--muted);
+  border: 1px solid transparent;
+}
+.toolbar__filters a:hover { text-decoration: none; border-color: var(--rule-firm); }
+.toolbar__filters a[aria-current] { background: var(--card); border-color: var(--sign); color: var(--sign); font-weight: 700; }
+[data-theme="dark"] .toolbar__filters a[aria-current] { color: var(--link); }
+
+.thread {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr) 6.5rem minmax(0, 13rem);
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--rule);
+}
+.thread:last-child { border-bottom: 0; }
+.thread:hover { background: var(--sunk); }
+.thread--pinned { background: #fefaf0; }
+[data-theme="dark"] .thread--pinned { background: #1b2018; }
+
+.thread__title { font-size: var(--t-md); font-weight: 600; margin: 0 0 0.1rem; display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.thread__title a { color: var(--ink); }
+.thread__title a:hover { color: var(--chai); }
+.thread--unread .thread__title a { color: var(--sign); }
+[data-theme="dark"] .thread--unread .thread__title a { color: var(--link); }
+
+.thread__meta { font-size: var(--t-sm); color: var(--faint); }
+.thread__meta a { color: var(--muted); }
+
+.thread__pages { display: inline-flex; gap: 0.25rem; margin-left: 0.35rem; }
+.thread__pages a {
+  font-size: var(--t-xs);
+  padding: 0 0.3rem;
+  border: 1px solid var(--rule-firm);
+  border-radius: 3px;
+  color: var(--muted);
+}
+
+.thread__count { font-size: var(--t-sm); }
+.thread__count div { display: flex; justify-content: space-between; gap: 0.5rem; }
+.thread__count dt { color: var(--faint); }
+.thread__count dd { margin: 0; font-weight: 700; }
+
+/* --- 14. Pagination ----------------------------------------------------- */
+
+.pager { display: flex; gap: 0.3rem; flex-wrap: wrap; align-items: center; margin: 1.25rem 0; }
+.pager a, .pager span {
+  min-width: 2.2rem;
+  text-align: center;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-ctl);
+  background: var(--card);
+  color: var(--muted);
+  font-size: var(--t-sm);
+}
+.pager a:hover { border-color: var(--sign); color: var(--sign); text-decoration: none; }
+.pager [aria-current] { background: var(--sign); border-color: var(--sign); color: #fff; font-weight: 700; }
+.pager .pager__gap { border: 0; background: none; }
+
+/* --- 15. Posts ---------------------------------------------------------- */
+
+.thread-head { margin-bottom: 1.25rem; }
+.thread-head h1 { font-size: var(--t-xl); letter-spacing: -0.015em; }
+.thread-head__meta { color: var(--muted); font-size: var(--t-sm); margin-top: 0.4rem; display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+
+.post {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr);
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-block);
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.post--op { border-color: var(--rule-firm); border-left: 4px solid var(--milestone); }
+
+.post__who {
+  background: var(--sunk);
+  border-right: 1px solid var(--rule);
+  padding: 1rem;
+  text-align: center;
+}
+.post__who .avatar { margin: 0 auto 0.6rem; }
+.post__name { font-family: var(--slab); font-weight: 600; font-size: var(--t-md); }
+.post__rank { color: var(--chai); font-size: var(--t-xs); font-weight: 700; margin-top: 0.1rem; }
+.post__facts { margin-top: 0.75rem; font-size: var(--t-xs); color: var(--muted); display: grid; gap: 0.2rem; }
+.post__facts div { display: flex; justify-content: space-between; gap: 0.5rem; }
+.post__facts dt { color: var(--faint); }
+.post__facts dd { margin: 0; }
+
+.post__body { display: flex; flex-direction: column; min-width: 0; }
+
+.post__bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 1.1rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--t-sm);
+  color: var(--faint);
+}
+.post__no { font-weight: 700; color: var(--muted); }
+
+.post__text { padding: 1.1rem; flex: 1; }
+.post__text p { max-width: 74ch; }
+.post__text h3 { font-size: var(--t-md); margin: 1.2rem 0 0.5rem; }
+.post__text ul { margin: 0 0 1rem 1.1rem; }
+.post__text li { list-style: disc; margin-bottom: 0.3rem; }
+.post__text img { border-radius: var(--r-ctl); margin: 0.5rem 0 1rem; }
+
+.quote {
+  border-left: 3px solid var(--sign-lift);
+  background: var(--sunk);
+  padding: 0.75rem 1rem;
+  margin: 0 0 1rem;
+  border-radius: 0 var(--r-ctl) var(--r-ctl) 0;
+}
+.quote__who { font-size: var(--t-sm); font-weight: 700; color: var(--muted); margin-bottom: 0.3rem; }
+.quote p:last-child { margin-bottom: 0; }
+
+.figure { margin: 0 0 1.1rem; }
+.figure__frame {
+  aspect-ratio: 16 / 9;
+  min-height: 11rem;
+  border-radius: var(--r-ctl);
+  background: linear-gradient(160deg, var(--sign-lift), var(--sign-deep) 60%, #1b3a2c);
+  display: grid;
+  place-items: center;
+  color: #bcd9c9;
+  font-size: var(--t-sm);
+  border: 1px solid var(--rule);
+}
+.figure figcaption { font-size: var(--t-sm); color: var(--faint); margin-top: 0.4rem; }
+
+.post__sign {
+  border-top: 1px dotted var(--rule-firm);
+  margin: 0 1.1rem;
+  padding: 0.6rem 0;
+  color: var(--faint);
+  font-size: var(--t-sm);
+  font-style: italic;
+}
+
+.post__acts {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1.1rem;
+  border-top: 1px solid var(--rule);
+  background: var(--sunk);
+}
+.post__acts .btn { padding: 0.35rem 0.7rem; }
+.post__acts .spacer { margin-left: auto; }
+
+/* --- 16. Editor / forms ------------------------------------------------- */
+
+.field { margin-bottom: 1rem; }
+.field label { display: block; font-weight: 700; font-size: var(--t-sm); margin-bottom: 0.35rem; }
+.field .hint { color: var(--muted); font-size: var(--t-sm); margin: 0.3rem 0 0; }
+
+.control {
+  width: 100%;
+  font: 400 var(--t-base)/1.6 var(--sans);
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--rule-firm);
+  border-radius: var(--r-ctl);
+  padding: 0.6rem 0.75rem;
+}
+.control:focus { border-color: var(--sign); }
+textarea.control { min-height: 11rem; resize: vertical; }
+
+.editor { border: 1px solid var(--rule-firm); border-radius: var(--r-ctl); background: var(--card); overflow: hidden; }
+.editor__tools { display: flex; gap: 0.15rem; padding: 0.35rem; background: var(--sunk); border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+.editor__tools button {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0.25rem 0.55rem;
+  font: 600 var(--t-sm) var(--sans);
+  color: var(--muted);
+  cursor: pointer;
+  min-width: 2rem;
+}
+.editor__tools button:hover { background: var(--card); border-color: var(--rule-firm); color: var(--ink); }
+.editor textarea { border: 0; border-radius: 0; }
+.editor textarea:focus { outline-offset: -3px; }
+
+.formcard {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-block);
+  padding: 1.5rem;
+  max-width: 26rem;
+  margin: 0 auto;
+}
+.formcard h1 { font-size: var(--t-lg); margin-bottom: 0.4rem; }
+.formcard__note { color: var(--muted); font-size: var(--t-sm); margin-bottom: 1.25rem; }
+.formcard .btn { width: 100%; justify-content: center; }
+.formcard__alt { text-align: center; font-size: var(--t-sm); color: var(--muted); margin: 1rem 0 0; }
+
+.checkline { display: flex; align-items: center; gap: 0.5rem; font-size: var(--t-sm); }
+
+/* --- 17. Sidebar -------------------------------------------------------- */
+
+.side { display: grid; gap: 1.25rem; align-content: start; }
+.side .block { margin: 0; }
+
+.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+.stats div { background: var(--sunk); border-radius: var(--r-ctl); padding: 0.6rem 0.75rem; }
+.stats dt { font-size: var(--t-xs); color: var(--faint); }
+.stats dd { margin: 0; font-family: var(--slab); font-weight: 700; font-size: var(--t-md); }
+
+.mini { display: grid; gap: 0.75rem; }
+.mini li { display: flex; gap: 0.6rem; align-items: flex-start; }
+.mini__title { font-size: var(--t-sm); font-weight: 500; display: block; }
+.mini__meta { font-size: var(--t-xs); color: var(--faint); }
+
+.faces { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+/* --- 18. Members grid --------------------------------------------------- */
+
+.members { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 1rem; }
+.member {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-block);
+  padding: 1.1rem;
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+.member__name { font-family: var(--slab); font-weight: 600; font-size: var(--t-md); }
+.member__rank { color: var(--chai); font-size: var(--t-xs); font-weight: 700; }
+.member__line { font-size: var(--t-sm); color: var(--muted); margin-top: 0.35rem; }
+
+/* --- 19. Footer --------------------------------------------------------- */
+
+.footer {
+  background: var(--sign-deep);
+  color: #a9c6ba;
+  padding: 2.25rem 0 1.5rem;
+  font-size: var(--t-sm);
+  border-top: 3px solid var(--milestone);
+}
+.footer a { color: #d5e6dd; }
+.footer a:hover { color: var(--milestone); }
+.footer__cols { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 1.5rem; }
+.footer h3 { color: #fff; font-size: var(--t-base); margin-bottom: 0.6rem; }
+.footer li { margin-bottom: 0.35rem; }
+.footer__base {
+  margin-top: 1.75rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, .12);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  color: #86a89a;
+}
+
+/* --- 20. Responsive ----------------------------------------------------- */
+
+@media (max-width: 1040px) {
+  .layout--split { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 860px) {
+  .node { grid-template-columns: 2.25rem minmax(0, 1fr); row-gap: 0.6rem; }
+  .node__stats {
+    grid-column: 2;
+    flex-direction: row;
+    gap: 1rem;
+    color: var(--muted);
+  }
+  .node__stats div { gap: 0.3rem; }
+  .node__last { grid-column: 2; padding-top: 0.6rem; border-top: 1px dotted var(--rule); }
+
+  .thread { grid-template-columns: 2.25rem minmax(0, 1fr); row-gap: 0.5rem; }
+  .thread__count { grid-column: 2; display: flex; gap: 1rem; }
+  .thread__last { grid-column: 2; font-size: var(--t-xs); }
+
+  .post { grid-template-columns: minmax(0, 1fr); }
+  .post__who {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-align: left;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+    padding: 0.75rem 1rem;
+  }
+  .post__who .avatar { margin: 0; width: 2.5rem; height: 2.5rem; font-size: 1.1rem; }
+  .post__facts { display: none; }
+
+  .footer__cols { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 680px) {
+  .masthead__inner { flex-direction: column; align-items: stretch; }
+  .hunt { flex: 1 1 auto; }
+  .utility__set { display: none; }
+
+  .mainnav__burger { display: inline-flex; }
+  .mainnav__list {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    flex-direction: column;
+    background: var(--card);
+    border-bottom: 1px solid var(--rule);
+    box-shadow: 0 8px 20px rgba(7, 58, 42, .12);
+  }
+  .mainnav__list.is-open { display: flex; }
+  .mainnav a { border-bottom: 1px solid var(--rule); border-left: 3px solid transparent; margin: 0; }
+  .mainnav a[aria-current="page"] { border-left-color: var(--milestone); border-bottom-color: var(--rule); }
+
+  .pagehead h1 { font-size: var(--t-lg); }
+  .footer__cols { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+@media print {
+  .utility, .mainnav, .footer, .post__acts, .editor { display: none; }
+  body { background: #fff; }
+  .post { break-inside: avoid; }
+}
+
+</style>
+
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+{% include "partials/header.html" with active="forums" %}
+
+
+
+<main id="main" class="shell page">
+  
+<div class="layout layout--split">
+  <div>
+    <div class="pagehead">
+      <div>
+        <h1>Where the trip gets planned</h1>
+        <p>Ask before you go, argue about the route while you plan it, and post the photos when you get back.</p>
+      </div>
+      <div class="pagehead__side">
+        <a class="btn btn--go" href="{% url 'new_thread' %}">Start a thread</a>
+        <a class="btn" href="whats-new.html">New posts</a>
+      </div>
+    </div>
+
+    
+      {% for category in categories %}
+      <section class="block" aria-labelledby="cat-{{ category.slug }}">
+        <div class="block__bar">
+          <h2 id="cat-{{ category.slug }}">{{ category.title }}</h2>
+          <button class="btn btn--quiet" type="button" data-collapse aria-expanded="true" style="color:#cfe3d9">Collapse</button>
+        </div>
+        <ul data-collapse-target>
+          {% for forum in category.forums %}
+            {% include "partials/node.html" with show_subs=True %}
+          {% endfor %}
+        </ul>
+      </section>
+      {% endfor %}
+    
+  </div>
+
+  <aside class="side" aria-label="Forum information">
+    <section class="block">
+      <div class="block__bar block__bar--plain"><h2>On the road right now</h2></div>
+      <div class="block__body">
+        <p style="margin-bottom:.75rem;color:var(--muted);font-size:var(--t-sm)">214 members and 1,986 guests are reading.</p>
+        <div class="faces">
+          
+            <a href="profile.html" title="Meera Iyer">
+<span class="avatar tone-1 avatar--sm" aria-hidden="true">M</span>
+</a>
+          
+            <a href="profile.html" title="Arjun Sethi">
+<span class="avatar tone-2 avatar--sm" aria-hidden="true">A</span>
+</a>
+          
+            <a href="profile.html" title="Tenzin Norbu">
+<span class="avatar tone-4 avatar--sm" aria-hidden="true">T</span>
+</a>
+          
+            <a href="profile.html" title="Sam Fernandes">
+<span class="avatar tone-5 avatar--sm" aria-hidden="true">S</span>
+</a>
+          
+            <a href="profile.html" title="Priyanka Rao">
+<span class="avatar tone-6 avatar--sm" aria-hidden="true">P</span>
+</a>
+          
+            <a href="profile.html" title="Farida Qureshi">
+<span class="avatar tone-3 avatar--sm" aria-hidden="true">F</span>
+</a>
+          
+            <a href="profile.html" title="Lhamo Sherpa">
+<span class="avatar tone-1 avatar--sm" aria-hidden="true">L</span>
+</a>
+          
+            <a href="profile.html" title="Dev Mahato">
+<span class="avatar tone-2 avatar--sm" aria-hidden="true">D</span>
+</a>
+          
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="block__bar block__bar--plain"><h2>Latest trip logs</h2></div>
+      <div class="block__body">
+        <ul class="mini">
+          
+            <li>
+              
+<span class="avatar tone-3 avatar--sm" aria-hidden="true">F</span>
+
+              <span>
+                <a class="mini__title" href="{% url 'thread' %}">Six days on the Konkan coast in the rain</a>
+                <span class="mini__meta">Farida Qureshi &middot; 38 minutes ago</span>
+              </span>
+            </li>
+          
+            <li>
+              
+<span class="avatar tone-1 avatar--sm" aria-hidden="true">M</span>
+
+              <span>
+                <a class="mini__title" href="{% url 'thread' %}">Guwahati to Tawang, the long way</a>
+                <span class="mini__meta">Meera Iyer &middot; Yesterday</span>
+              </span>
+            </li>
+          
+            <li>
+              
+<span class="avatar tone-6 avatar--sm" aria-hidden="true">P</span>
+
+              <span>
+                <a class="mini__title" href="{% url 'thread' %}">Rann of Kutch on a full moon week</a>
+                <span class="mini__meta">Priyanka Rao &middot; Monday</span>
+              </span>
+            </li>
+          
+            <li>
+              
+<span class="avatar tone-1 avatar--sm" aria-hidden="true">L</span>
+
+              <span>
+                <a class="mini__title" href="{% url 'thread' %}">Sandakphu on foot, December</a>
+                <span class="mini__meta">Lhamo Sherpa &middot; 29 Aug 2026</span>
+              </span>
+            </li>
+          
+        </ul>
+      </div>
+      <div class="block__foot"><a href="{% url 'forum' 'trip-logs' %}">All trip logs</a></div>
+    </section>
+
+    <section class="block">
+      <div class="block__bar block__bar--plain"><h2>Forum numbers</h2></div>
+      <div class="block__body">
+        <dl class="stats">
+          <div><dt>Threads</dt><dd>44,180</dd></div>
+          <div><dt>Posts</dt><dd>1.9M</dd></div>
+          <div><dt>Members</dt><dd>43,602</dd></div>
+          <div><dt>Newest</dt><dd style="font-size:var(--t-base)">Dev Mahato</dd></div>
+        </dl>
+      </div>
+    </section>
+  </aside>
+</div>
+
+</main>
+
+<footer class="footer">
+  <div class="shell">
+    <div class="footer__cols">
+      <div>
+        <h3>Chai &amp; Trails</h3>
+        <p>A forum for people who plan trips on paper napkins and finish them three states later. Started in 2026, run by the people who post here.</p>
+      </div>
+      <div>
+        <h3>Forum</h3>
+        <ul>
+          <li><a href="{% url 'index' %}">All sections</a></li>
+          <li><a href="whats-new.html">New posts</a></li>
+          <li><a href="{% url 'members' %}">Members</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Posting</h3>
+        <ul>
+          <li><a href="{% url 'new_thread' %}">Start a thread</a></li>
+          <li><a href="{% url 'index' %}">Community rules</a></li>
+          <li><a href="{% url 'index' %}">Trip log format</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Contact</h3>
+        <ul>
+          <li><a href="{% url 'index' %}">Report a post</a></li>
+          <li><a href="{% url 'index' %}">Advertise</a></li>
+          <li><a href="{% url 'index' %}">Privacy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer__base">
+      <span>&copy; 2026 Chai &amp; Trails. Trip reports belong to the members who wrote them.</span>
+      <span>Built with Django and PostgreSQL</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* Chai & Trails: small progressive enhancements. Nothing here is required
+   for the pages to work, so it is safe to defer. */
+(function () {
+  'use strict';
+
+  var root = document.documentElement;
+
+  /* Theme -------------------------------------------------------------- */
+  function readStored() {
+    try { return window.localStorage.getItem('ct-theme'); } catch (e) { return null; }
+  }
+  function store(value) {
+    try { window.localStorage.setItem('ct-theme', value); } catch (e) { /* private mode */ }
+  }
+
+  var saved = readStored();
+  if (saved) {
+    root.setAttribute('data-theme', saved);
+  } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    root.setAttribute('data-theme', 'dark');
+  }
+
+  var toggle = document.querySelector('[data-theme-toggle]');
+  if (toggle) {
+    var label = function () {
+      var dark = root.getAttribute('data-theme') === 'dark';
+      toggle.textContent = dark ? 'Day' : 'Night';
+      toggle.setAttribute('aria-label', dark ? 'Switch to the day theme' : 'Switch to the night theme');
+    };
+    label();
+    toggle.addEventListener('click', function () {
+      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      store(next);
+      label();
+    });
+  }
+
+  /* Mobile navigation --------------------------------------------------- */
+  var burger = document.querySelector('[data-nav-toggle]');
+  var navList = document.getElementById('mainnav-list');
+  if (burger && navList) {
+    burger.addEventListener('click', function () {
+      var open = navList.classList.toggle('is-open');
+      burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  }
+
+  /* Collapse a category block ------------------------------------------- */
+  document.querySelectorAll('[data-collapse]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var block = button.closest('.block');
+      var body = block && block.querySelector('[data-collapse-target]');
+      if (!body) { return; }
+      var hidden = body.hasAttribute('hidden');
+      if (hidden) { body.removeAttribute('hidden'); } else { body.setAttribute('hidden', ''); }
+      button.setAttribute('aria-expanded', hidden ? 'true' : 'false');
+      button.textContent = hidden ? 'Collapse' : 'Expand';
+    });
+  });
+
+  /* Quote button: drops a quote stub into the reply box ------------------ */
+  var replyBox = document.getElementById('reply-body');
+  document.querySelectorAll('[data-quote]').forEach(function (button) {
+    button.addEventListener('click', function (event) {
+      if (!replyBox) { return; }
+      event.preventDefault();
+      var author = button.getAttribute('data-quote');
+      replyBox.value += (replyBox.value ? '
+
+' : '') + '[QUOTE=' + author + ']
+
+[/QUOTE]
+';
+      replyBox.focus();
+      replyBox.setSelectionRange(replyBox.value.length, replyBox.value.length);
+    });
+  });
+})();
+
+</script>
+
+</body>
+</html>

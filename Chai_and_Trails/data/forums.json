@@ -1,0 +1,330 @@
+{
+  "categories": [
+    {
+      "slug": "before-you-go",
+      "title": "Before you go",
+      "forums": [
+        {
+          "slug": "route-notes",
+          "title": "Route notes",
+          "description": "Road condition, fuel gaps, where the tar ends and what replaces it.",
+          "threads": 4120,
+          "posts": 61908,
+          "fresh": true,
+          "last_post": {
+            "title": "Manali to Kaza, first week of June",
+            "author": "Tenzin Norbu",
+            "tone": 4,
+            "when": "22 minutes ago"
+          },
+          "children": [
+            {
+              "slug": "himalaya-and-ladakh",
+              "title": "Himalaya and Ladakh",
+              "description": "Passes, permits, altitude and the short season above 4,000 metres.",
+              "threads": 1880,
+              "posts": 34210,
+              "fresh": true,
+              "last_post": {
+                "title": "Manali to Kaza, first week of June",
+                "author": "Tenzin Norbu",
+                "tone": 4,
+                "when": "22 minutes ago"
+              },
+              "children": []
+            },
+            {
+              "slug": "western-ghats-and-konkan",
+              "title": "Western Ghats and Konkan",
+              "description": "Monsoon roads, ferry timings, and which ghat to take in the rain.",
+              "threads": 1102,
+              "posts": 16940,
+              "fresh": false,
+              "last_post": {
+                "title": "Amboli in September, is it worth the fog?",
+                "author": "Sam Fernandes",
+                "tone": 5,
+                "when": "Yesterday at 10:04 PM"
+              },
+              "children": []
+            },
+            {
+              "slug": "northeast",
+              "title": "Northeast",
+              "description": "Seven states, one road each, and landslide season for half the year.",
+              "threads": 744,
+              "posts": 9102,
+              "fresh": true,
+              "last_post": {
+                "title": "Guwahati to Tawang after the landslides",
+                "author": "Meera Iyer",
+                "tone": 1,
+                "when": "Tuesday at 9:12 AM"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "slug": "permits-and-paperwork",
+          "title": "Permits and paperwork",
+          "description": "Inner line permits, protected area rules, border district paperwork, tolls.",
+          "threads": 612,
+          "posts": 7340,
+          "fresh": true,
+          "last_post": {
+            "title": "Sikkim PAP for Gurudongmar, 2026 rules",
+            "author": "Priyanka Rao",
+            "tone": 6,
+            "when": "2 hours ago"
+          },
+          "children": []
+        },
+        {
+          "slug": "gear-and-packing",
+          "title": "Gear and packing",
+          "description": "Tents, panniers, tyre plugs, and the jacket that finally survived a monsoon.",
+          "threads": 1455,
+          "posts": 22061,
+          "fresh": false,
+          "last_post": {
+            "title": "Soft luggage that survives a rack-less bike",
+            "author": "Sam Fernandes",
+            "tone": 5,
+            "when": "Yesterday at 9:14 PM"
+          },
+          "children": []
+        },
+        {
+          "slug": "money-and-budgeting",
+          "title": "Money and budgeting",
+          "description": "What the trip actually cost, receipts included. Fuel, stays, repairs, bribes avoided.",
+          "threads": 489,
+          "posts": 5102,
+          "fresh": false,
+          "last_post": {
+            "title": "14 days in Spiti for under 30k, full breakdown",
+            "author": "Farida Qureshi",
+            "tone": 3,
+            "when": "Tuesday at 7:02 AM"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "slug": "on-the-road",
+      "title": "On the road",
+      "forums": [
+        {
+          "slug": "trip-logs",
+          "title": "Trip logs",
+          "description": "Long-form reports with photos. One thread per trip, written after you get back.",
+          "threads": 2908,
+          "posts": 88430,
+          "fresh": true,
+          "last_post": {
+            "title": "Six days on the Konkan coast in the rain",
+            "author": "Farida Qureshi",
+            "tone": 3,
+            "when": "38 minutes ago"
+          },
+          "children": [
+            {
+              "slug": "motorcycle-trips",
+              "title": "Motorcycle",
+              "description": "Two wheels, one tank bag, and a chain that needs oiling every evening.",
+              "threads": 1204,
+              "posts": 41880,
+              "fresh": false,
+              "last_post": {
+                "title": "Spiti circuit on a 350, twelve days solo",
+                "author": "Arjun Sethi",
+                "tone": 2,
+                "when": "3 hours ago"
+              },
+              "children": []
+            },
+            {
+              "slug": "car-and-4x4-trips",
+              "title": "Car and 4x4",
+              "description": "Road trips with a boot full of luggage and the occasional river crossing.",
+              "threads": 862,
+              "posts": 24310,
+              "fresh": true,
+              "last_post": {
+                "title": "Six days on the Konkan coast in the rain",
+                "author": "Farida Qureshi",
+                "tone": 3,
+                "when": "38 minutes ago"
+              },
+              "children": []
+            },
+            {
+              "slug": "public-transport",
+              "title": "Public transport",
+              "description": "Buses, trains and shared jeeps. No steering wheel, all of the stories.",
+              "threads": 507,
+              "posts": 13902,
+              "fresh": false,
+              "last_post": {
+                "title": "Kalka to Kaza on HRTC buses only",
+                "author": "Dev Mahato",
+                "tone": 2,
+                "when": "Monday at 2:05 PM"
+              },
+              "children": []
+            },
+            {
+              "slug": "on-foot",
+              "title": "On foot",
+              "description": "Trips where your own two legs did most of the distance.",
+              "threads": 335,
+              "posts": 8338,
+              "fresh": false,
+              "last_post": {
+                "title": "Hampta Pass with a local guide, day by day",
+                "author": "Lhamo Sherpa",
+                "tone": 1,
+                "when": "Sunday at 10:40 AM"
+              },
+              "children": []
+            }
+          ]
+        },
+        {
+          "slug": "looking-for-company",
+          "title": "Looking for company",
+          "description": "Dates, route, seats free. Meet in a public place before you commit to a fortnight.",
+          "threads": 1077,
+          "posts": 9884,
+          "fresh": false,
+          "last_post": {
+            "title": "Two seats, Jaisalmer loop, 12 to 19 October",
+            "author": "Dev Mahato",
+            "tone": 2,
+            "when": "Today at 6:41 AM"
+          },
+          "children": []
+        },
+        {
+          "slug": "treks-and-walks",
+          "title": "Treks and walks",
+          "description": "Multi-day walks, campsites, guides worth their fee, and altitude sense.",
+          "threads": 1340,
+          "posts": 18220,
+          "fresh": true,
+          "last_post": {
+            "title": "Sandakphu in December: what the cold is really like",
+            "author": "Lhamo Sherpa",
+            "tone": 1,
+            "when": "1 hour ago"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "slug": "the-machine",
+      "title": "The machine",
+      "forums": [
+        {
+          "slug": "motorcycles",
+          "title": "Motorcycles",
+          "description": "Service intervals, chain care, what to carry in the tool roll.",
+          "threads": 3201,
+          "posts": 54776,
+          "fresh": false,
+          "last_post": {
+            "title": "Rear shock rebuild before a 4,000 km run",
+            "author": "Arjun Sethi",
+            "tone": 2,
+            "when": "Yesterday at 11:30 PM"
+          },
+          "children": []
+        },
+        {
+          "slug": "cars-and-4x4",
+          "title": "Cars and 4x4",
+          "description": "Ground clearance, recovery gear, river crossings, and roof rack regrets.",
+          "threads": 2644,
+          "posts": 41210,
+          "fresh": false,
+          "last_post": {
+            "title": "Underbody guard: worth it for Ladakh?",
+            "author": "Arjun Sethi",
+            "tone": 2,
+            "when": "Monday at 4:18 PM"
+          },
+          "children": []
+        },
+        {
+          "slug": "cameras-and-drones",
+          "title": "Cameras and drones",
+          "description": "What survives dust and rain, and where drones are not allowed.",
+          "threads": 702,
+          "posts": 8530,
+          "fresh": false,
+          "last_post": {
+            "title": "Drone rules near the border districts",
+            "author": "Meera Iyer",
+            "tone": 1,
+            "when": "Sunday at 8:55 PM"
+          },
+          "children": []
+        }
+      ]
+    },
+    {
+      "slug": "chai-stall",
+      "title": "The chai stall",
+      "forums": [
+        {
+          "slug": "introductions",
+          "title": "Introductions",
+          "description": "New here? Say where you are and where you want to go first.",
+          "threads": 5880,
+          "posts": 31004,
+          "fresh": true,
+          "last_post": {
+            "title": "Hello from Ranchi, first long ride planned",
+            "author": "Dev Mahato",
+            "tone": 2,
+            "when": "12 minutes ago"
+          },
+          "children": []
+        },
+        {
+          "slug": "off-topic",
+          "title": "Off topic",
+          "description": "Everything that is not a road. Keep it civil, keep it out of the trip threads.",
+          "threads": 2190,
+          "posts": 97650,
+          "fresh": false,
+          "last_post": {
+            "title": "Today's song",
+            "author": "Sam Fernandes",
+            "tone": 5,
+            "when": "Today at 7:20 AM"
+          },
+          "children": []
+        },
+        {
+          "slug": "site-feedback",
+          "title": "Site feedback",
+          "description": "Bugs, feature requests, and complaints about the new colour scheme.",
+          "threads": 410,
+          "posts": 3988,
+          "fresh": false,
+          "last_post": {
+            "title": "Search should filter by month of travel",
+            "author": "Priyanka Rao",
+            "tone": 6,
+            "when": "Saturday at 1:12 PM"
+          },
+          "children": []
+        }
+      ]
+    }
+  ]
+}
