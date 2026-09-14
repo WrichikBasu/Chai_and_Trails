@@ -100,6 +100,16 @@ DATABASES: dict[str, dict[str, object]] = {
 
 AUTH_USER_MODEL = 'forum.User'
 
+# New passwords are hashed with the first entry. The rest still verify older
+# hashes, which are re-hashed with Argon2 the next time that member logs in.
+PASSWORD_HASHERS: list[str] = [
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+    'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+    'django.contrib.auth.hashers.ScryptPasswordHasher',
+]
+
 
 # Password validation
 # https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators

@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError, transaction
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
@@ -23,6 +24,19 @@ class UserModelTests(TestCase):
     def test_tone_outside_palette_is_rejected(self) -> None:
         with self.assertRaises(IntegrityError):
             User.objects.create_user('tenzin', password='chai-and-trails', avatar_tone=7)
+
+    def test_new_passwords_are_hashed_with_argon2(self) -> None:
+        member = User.objects.create_user('farida', password='chai-and-trails')
+        self.assertTrue(member.password.startswith('argon2$argon2id$'))
+
+    def test_pbkdf2_password_is_rehashed_with_argon2_on_login(self) -> None:
+        member = User.objects.create_user('arjun')
+        member.password = make_password('chai-and-trails', hasher='pbkdf2_sha256')
+        member.save()
+
+        self.assertTrue(member.check_password('chai-and-trails'))
+        member.refresh_from_db()
+        self.assertTrue(member.password.startswith('argon2$argon2id$'))
 
 
 class ForumModelTests(TestCase):
