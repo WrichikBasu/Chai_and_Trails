@@ -1,15 +1,18 @@
 import json
 from datetime import timedelta
 from io import StringIO
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.db.models import Model
 from django.http import HttpResponse
+from django.templatetags.static import static
 from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import dateformat, timezone
@@ -380,3 +383,41 @@ class LoginTests(TestCase):
     def test_logout_needs_post(self) -> None:
         self.client.force_login(User.objects.get(username='tenzin'))
         self.assertEqual(self.client.get(reverse('logout')).status_code, 405)
+
+
+class StaticAssetTests(TestCase):
+    def test_shared_assets_are_found(self) -> None:
+        for path in ['css/site.css', 'js/site.js', 'js/theme.js']:
+            with self.subTest(path=path):
+                self.assertIsNotNone(finders.find(path))
+
+    def test_quote_button_script_has_no_raw_line_break_in_a_string(self) -> None:
+        # Regression: the quote stub once held literal line breaks, a syntax error that stopped the whole script.
+        script = Path(finders.find('js/site.js')).read_text(encoding='utf-8')
+        self.assertIn("'\\n\\n' : '') + '[QUOTE=' + author + ']\\n\\n[/QUOTE]\\n';", script)
+
+    def test_every_page_links_the_shared_assets_instead_of_inline_code(self) -> None:
+        import_forums()
+        stylesheet = f'<link rel="stylesheet" href="{static("css/site.css")}">'
+        script = f'<script src="{static("js/site.js")}"></script>'
+        urls: list[str] = [
+            reverse(name) for name in ['index', 'thread', 'new_thread', 'members', 'register', 'login']
+        ] + [reverse('forum', args=['route-notes'])]
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, stylesheet, html=True)
+                self.assertContains(response, script, html=True)
+                self.assertNotContains(response, '<style>')
+                self.assertNotContains(response, '<script>')
+                self.assertTemplateUsed(response, 'partials/footer.html')
+
+    def test_theme_script_runs_before_any_stylesheet(self) -> None:
+        # Loaded after the CSS, a dark-mode visitor would see the light theme flash first.
+        theme = f'<script src="{static("js/theme.js")}"></script>'
+        for url in [reverse('index'), reverse('login')]:
+            with self.subTest(url=url):
+                html = self.client.get(url).content.decode()
+                self.assertIn(theme, html)
+                self.assertLess(html.index(theme), html.index('rel="stylesheet"'))
+                self.assertLess(html.index(theme), html.index('</head>'))

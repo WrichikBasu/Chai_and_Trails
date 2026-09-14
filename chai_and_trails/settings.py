@@ -153,6 +153,9 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# Project-wide assets such as static/css/site.css, alongside the project-level templates/.
+STATICFILES_DIRS: list[Path] = [BASE_DIR / 'static']
+
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration

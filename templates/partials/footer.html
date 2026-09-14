@@ -1,0 +1,38 @@
+<footer class="footer">
+  <div class="shell">
+    <div class="footer__cols">
+      <div>
+        <h3>Chai &amp; Trails</h3>
+        <p>A forum for people who plan trips on paper napkins and finish them three states later. Started in 2026, run by the people who post here.</p>
+      </div>
+      <div>
+        <h3>Forum</h3>
+        <ul>
+          <li><a href="{% url 'index' %}">All sections</a></li>
+          <li><a href="whats-new.html">New posts</a></li>
+          <li><a href="{% url 'members' %}">Members</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Posting</h3>
+        <ul>
+          <li><a href="{% url 'new_thread' %}">Start a thread</a></li>
+          <li><a href="{% url 'index' %}">Community rules</a></li>
+          <li><a href="{% url 'index' %}">Trip log format</a></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Contact</h3>
+        <ul>
+          <li><a href="{% url 'index' %}">Report a post</a></li>
+          <li><a href="{% url 'index' %}">Advertise</a></li>
+          <li><a href="{% url 'index' %}">Privacy</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer__base">
+      <span>&copy; 2026 Chai &amp; Trails. Trip reports belong to the members who wrote them.</span>
+      <span>Built with Django and PostgreSQL</span>
+    </div>
+  </div>
+</footer>
