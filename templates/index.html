@@ -859,7 +859,7 @@ textarea.control { min-height: 11rem; resize: vertical; }
           <button class="btn btn--quiet" type="button" data-collapse aria-expanded="true" style="color:#cfe3d9">Collapse</button>
         </div>
         <ul data-collapse-target>
-          {% for forum in category.forums %}
+          {% for forum in category.forums.all %}
             {% include "partials/node.html" with show_subs=True %}
           {% endfor %}
         </ul>

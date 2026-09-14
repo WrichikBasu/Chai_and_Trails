@@ -1,14 +1,19 @@
+import json
 from datetime import timedelta
+from io import StringIO
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
+from django.core.management import call_command
 from django.db import IntegrityError, transaction
+from django.db.models import Model
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
-from django.utils import timezone
+from django.utils import dateformat, timezone
 
-from .forum_data import iter_forums, load_categories
-from .models import Category, Forum, Thread, Tone, User
+from .management.commands.import_forums import DATA_FILE, JsonData, JsonForum, parse_when
+from .models import Category, Forum, Post, Thread, Tone, User
+from .templatetags.forum_extras import forum_time
 
 
 class UserModelTests(TestCase):
@@ -85,25 +90,98 @@ class ForumModelTests(TestCase):
         )
 
 
-class ForumDataTests(SimpleTestCase):
-    def test_slugs_are_unique(self) -> None:
-        slugs: list[str] = [loc.forum['slug'] for loc in iter_forums(load_categories())]
-        self.assertEqual(len(slugs), len(set(slugs)))
+def json_forum_slugs(forums: list[JsonForum]) -> list[str]:
+    return [slug for forum in forums for slug in [forum['slug'], *json_forum_slugs(forum['children'])]]
 
 
-class ForumPageTests(SimpleTestCase):
+def import_forums() -> None:
+    call_command('import_forums', stdout=StringIO())
+
+
+class ImportForumsTests(TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+
+    def test_every_json_forum_is_imported(self) -> None:
+        with DATA_FILE.open(encoding='utf-8') as f:
+            data: JsonData = json.load(f)
+        slugs = [slug for category in data['categories'] for slug in json_forum_slugs(category['forums'])]
+        self.assertCountEqual(Forum.objects.values_list('slug', flat=True), slugs)
+        self.assertEqual(Category.objects.count(), len(data['categories']))
+
+    def test_running_again_creates_no_duplicates(self) -> None:
+        models: list[type[Model]] = [Category, Forum, Thread, Post, User]
+        before = [model.objects.count() for model in models]
+        import_forums()
+        self.assertEqual([model.objects.count() for model in models], before)
+
+    def test_parent_shares_its_subforums_latest_post(self) -> None:
+        route_notes = Forum.objects.get(slug='route-notes')
+        himalaya = Forum.objects.get(slug='himalaya-and-ladakh')
+        self.assertEqual(route_notes.last_post, himalaya.last_post)
+        self.assertEqual(himalaya.last_post.thread.forum, himalaya)
+
+    def test_sample_members_cannot_log_in(self) -> None:
+        tenzin = User.objects.get(username='tenzin-norbu')
+        self.assertEqual(tenzin.display_name, 'Tenzin Norbu')
+        self.assertFalse(tenzin.has_usable_password())
+
+    def test_display_times_are_parsed(self) -> None:
+        now = timezone.localtime()
+        self.assertEqual(parse_when('22 minutes ago', now), now - timedelta(minutes=22))
+        self.assertEqual(parse_when('1 hour ago', now), now - timedelta(hours=1))
+        yesterday = parse_when('Yesterday at 9:14 PM', now)
+        self.assertEqual((yesterday.date(), yesterday.hour, yesterday.minute), (now.date() - timedelta(days=1), 21, 14))
+        tuesday = parse_when('Tuesday at 7:02 AM', now)
+        self.assertEqual(tuesday.strftime('%A %H:%M'), 'Tuesday 07:02')
+        self.assertTrue(timedelta(0) < now - tuesday <= timedelta(days=7))
+
+
+class ForumTimeTests(SimpleTestCase):
+    def test_recent_times_are_relative(self) -> None:
+        now = timezone.now()
+        self.assertEqual(forum_time(now - timedelta(seconds=10)), 'Just now')
+        self.assertEqual(forum_time(now - timedelta(minutes=1, seconds=5)), '1 minute ago')
+        self.assertEqual(forum_time(now - timedelta(minutes=22, seconds=5)), '22 minutes ago')
+        self.assertEqual(forum_time(now - timedelta(hours=2, minutes=1)), '2 hours ago')
+
+    def test_older_times_use_day_then_date(self) -> None:
+        now = timezone.now()
+        self.assertTrue(forum_time(now - timedelta(days=1)).startswith('Yesterday at '))
+        self.assertEqual(forum_time(now - timedelta(days=3)).split(' at ')[0],
+                         timezone.localtime(now - timedelta(days=3)).strftime('%A'))
+        self.assertEqual(forum_time(now - timedelta(days=30)), dateformat.format(timezone.localtime(now - timedelta(days=30)), 'j M Y'))
+
+
+class ForumPageTests(TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+
     def test_index_lists_every_category_and_forum(self) -> None:
         response = self.client.get(reverse('index'))
         self.assertEqual(response.status_code, 200)
-        for loc in iter_forums(load_categories()):
-            self.assertContains(response, f'id="cat-{loc.category["slug"]}"')
-            self.assertContains(response, reverse('forum', args=[loc.forum['slug']]))
+        for category in Category.objects.all():
+            self.assertContains(response, f'id="cat-{category.slug}"')
+        for forum in Forum.objects.all():
+            self.assertContains(response, reverse('forum', args=[forum.slug]))
+
+    def test_index_shows_each_forums_latest_post(self) -> None:
+        response = self.client.get(reverse('index'))
+        self.assertContains(response, 'Manali to Kaza, first week of June')
+        self.assertContains(response, '<a href="profile.html">Tenzin Norbu</a> &middot; 22 minutes ago')
+        self.assertContains(response, '61,908')
+
+    def test_index_needs_three_queries(self) -> None:
+        with self.assertNumQueries(3):  # categories, their forums with latest posts, subforums
+            self.client.get(reverse('index'))
 
     def test_every_forum_page_renders(self) -> None:
-        for loc in iter_forums(load_categories()):
-            with self.subTest(slug=loc.forum['slug']):
-                response = self.client.get(reverse('forum', args=[loc.forum['slug']]))
-                self.assertContains(response, f'<h1>{loc.forum["title"]}</h1>', html=True)
+        for forum in Forum.objects.all():
+            with self.subTest(slug=forum.slug):
+                response = self.client.get(reverse('forum', args=[forum.slug]))
+                self.assertContains(response, f'<h1>{forum.title}</h1>', html=True)
 
     def test_subforum_breadcrumb_links_to_parent(self) -> None:
         response = self.client.get(reverse('forum', args=['himalaya-and-ladakh']))

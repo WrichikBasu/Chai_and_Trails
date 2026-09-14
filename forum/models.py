@@ -1,10 +1,15 @@
 import random
-from typing import Any
+from datetime import timedelta
+from typing import Any, Final
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+
+# How long a forum's milestone marker stays lit after its latest post. A stand-in
+# until per-member unread tracking exists.
+FRESH_WINDOW: Final[timedelta] = timedelta(hours=3)
 
 
 class Tone(models.IntegerChoices):
@@ -35,6 +40,11 @@ class User(AbstractUser):
             ),
         ]
 
+    @property
+    def display_name(self) -> str:
+        """Full name where given (usernames can't contain spaces), else the username."""
+        return self.get_full_name() or self.username
+
 
 class Category(models.Model):
     slug = models.SlugField(unique=True)
@@ -50,6 +60,7 @@ class Category(models.Model):
 
 
 class Forum(models.Model):
+
     # A top-level forum sits in a category; a subforum sits in its parent and
     # inherits the category from there. So category.forums is the top level only.
     category = models.ForeignKey(Category, null=True, blank=True, on_delete=models.PROTECT, related_name='forums')
@@ -58,6 +69,7 @@ class Forum(models.Model):
     title = models.CharField(max_length=120)
     description = models.TextField()
     position = models.PositiveSmallIntegerField(default=0)
+
     # Kept up to date on each post, so the index never counts posts per visit.
     thread_count = models.PositiveIntegerField(default=0)
     post_count = models.PositiveIntegerField(default=0)
@@ -77,6 +89,19 @@ class Forum(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def ancestors(self) -> list[Forum]:
+        """Parent forums, outermost first; empty for a top-level forum."""
+        chain: list[Forum] = []
+        parent = self.parent
+        while parent is not None:
+            chain.insert(0, parent)
+            parent = parent.parent
+        return chain
+
+    @property
+    def is_fresh(self) -> bool:
+        return self.last_post is not None and timezone.now() - self.last_post.created_at < FRESH_WINDOW
 
 
 class Thread(models.Model):

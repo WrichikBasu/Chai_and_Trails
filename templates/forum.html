@@ -864,11 +864,11 @@ textarea.control { min-height: 11rem; resize: vertical; }
 </div>
 
 
-  {% if forum.children %}
+  {% if forum.children.all %}
   <section class="block">
     <div class="block__bar block__bar--plain"><h2>Sections inside {{ forum.title }}</h2></div>
     <ul>
-      {% for sub in forum.children %}
+      {% for sub in forum.children.all %}
         {% include "partials/node.html" with forum=sub %}
       {% endfor %}
     </ul>
