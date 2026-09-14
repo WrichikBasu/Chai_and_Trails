@@ -1,8 +1,11 @@
-{% extends "auth_base.html" %}
+{% extends "base.html" %}
 
-{% block title %}Log in{% endblock %}
+{% block title %}Log in | Chai &amp; Trails{% endblock %}
 
-{% block card %}
+{% block header %}{% include "partials/header.html" %}{% endblock %}
+
+{% block content %}
+<div class="formcard">
   <h1>Log in</h1>
   <p class="formcard__note">Welcome back. Log in to post, reply and watch threads.</p>
 
@@ -21,4 +24,5 @@
   </form>
 
   <p class="formcard__alt">New here? <a href="{% url 'register' %}">Join the forum</a></p>
+</div>
 {% endblock %}

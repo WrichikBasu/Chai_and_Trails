@@ -1,26 +1,10 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ forum.title }} | Chai &amp; Trails</title>
-<meta name="description" content="{{ forum.description }}">
-<meta name="theme-color" content="#0c5c43">
-{% load static %}
-{# First in <head>: sets the saved theme before the first paint, without waiting for fonts. #}
-<script src="{% static 'js/theme.js' %}"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Karla:ital,wght@0,400;0,500;0,700;1,400&family=Zilla+Slab:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{% static 'css/site.css' %}">
+{% extends "base.html" %}
 
-</head>
-<body>
-<a class="skip" href="#main">Skip to content</a>
+{% block title %}{{ forum.title }} | Chai &amp; Trails{% endblock %}
 
-{% include "partials/header.html" with active="forums" %}
+{% block description %}{{ forum.description }}{% endblock %}
 
-
+{% block crumbs %}
 <div class="crumbs">
   <div class="shell">
     <nav aria-label="Breadcrumb">
@@ -34,10 +18,9 @@
     </nav>
   </div>
 </div>
+{% endblock %}
 
-
-<main id="main" class="shell page">
-  
+{% block content %}
 <div class="pagehead">
   <div>
     <h1>{{ forum.title }}</h1>
@@ -520,11 +503,4 @@
   <p style="margin:0;font-size:var(--t-sm);color:var(--muted)">Get an email when someone posts in {{ forum.title }}.</p>
   <a class="btn btn--board" href="#watch">Watch this section</a>
 </div>
-
-</main>
-
-{% include "partials/footer.html" %}
-<script src="{% static 'js/site.js' %}"></script>
-
-</body>
-</html>
+{% endblock %}

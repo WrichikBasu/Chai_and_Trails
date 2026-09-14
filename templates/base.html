@@ -1,37 +1,31 @@
-<!doctype html>
+{% load static %}<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}{% endblock %} | Chai &amp; Trails</title>
-<meta name="description" content="A travel forum for road trips, treks and slow journeys across India.">
+<title>{% block title %}Chai &amp; Trails: India travel forum{% endblock %}</title>
+<meta name="description" content="{% block description %}A travel forum for road trips, treks and slow journeys across India.{% endblock %}">
 <meta name="theme-color" content="#0c5c43">
-{% load static %}
 {# First in <head>: sets the saved theme before the first paint, without waiting for fonts. #}
 <script src="{% static 'js/theme.js' %}"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Karla:ital,wght@0,400;0,500;0,700;1,400&family=Zilla+Slab:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{% static 'css/site.css' %}">
-
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 
-{% include "partials/header.html" %}
+{# Pages outside the forum tree override this to highlight a different nav item, or none. #}
+{% block header %}{% include "partials/header.html" with active="forums" %}{% endblock %}
 
-
+{% block crumbs %}{% endblock %}
 
 <main id="main" class="shell page">
-  
-<div class="formcard">
-  {% block card %}{% endblock %}
-</div>
-
+{% block content %}{% endblock %}
 </main>
 
 {% include "partials/footer.html" %}
 <script src="{% static 'js/site.js' %}"></script>
-
 </body>
 </html>

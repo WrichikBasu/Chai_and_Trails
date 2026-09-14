@@ -1,29 +1,6 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Chai &amp; Trails: India travel forum</title>
-<meta name="description" content="A travel forum for road trips, treks and slow journeys across India.">
-<meta name="theme-color" content="#0c5c43">
-{% load static %}
-{# First in <head>: sets the saved theme before the first paint, without waiting for fonts. #}
-<script src="{% static 'js/theme.js' %}"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Karla:ital,wght@0,400;0,500;0,700;1,400&family=Zilla+Slab:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{% static 'css/site.css' %}">
+{% extends "base.html" %}
 
-</head>
-<body>
-<a class="skip" href="#main">Skip to content</a>
-
-{% include "partials/header.html" with active="forums" %}
-
-
-
-<main id="main" class="shell page">
-  
+{% block content %}
 <div class="layout layout--split">
   <div>
     <div class="pagehead">
@@ -160,11 +137,4 @@
     </section>
   </aside>
 </div>
-
-</main>
-
-{% include "partials/footer.html" %}
-<script src="{% static 'js/site.js' %}"></script>
-
-</body>
-</html>
+{% endblock %}

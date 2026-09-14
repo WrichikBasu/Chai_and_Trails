@@ -1,8 +1,11 @@
-{% extends "auth_base.html" %}
+{% extends "base.html" %}
 
-{% block title %}Join the forum{% endblock %}
+{% block title %}Join the forum | Chai &amp; Trails{% endblock %}
 
-{% block card %}
+{% block header %}{% include "partials/header.html" %}{% endblock %}
+
+{% block content %}
+<div class="formcard">
   <h1>Join the forum</h1>
   <p class="formcard__note">Free, and takes a minute. You need an account to post and to see attachments in full size.</p>
 
@@ -33,4 +36,5 @@
   </form>
 
   <p class="formcard__alt">Already a member? <a href="{% url 'login' %}">Log in</a></p>
+</div>
 {% endblock %}

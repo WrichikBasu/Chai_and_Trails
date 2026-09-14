@@ -410,6 +410,7 @@ class StaticAssetTests(TestCase):
                 self.assertContains(response, script, html=True)
                 self.assertNotContains(response, '<style>')
                 self.assertNotContains(response, '<script>')
+                self.assertTemplateUsed(response, 'base.html')
                 self.assertTemplateUsed(response, 'partials/footer.html')
 
     def test_theme_script_runs_before_any_stylesheet(self) -> None:
