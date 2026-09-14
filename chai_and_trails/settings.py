@@ -100,6 +100,10 @@ DATABASES: dict[str, dict[str, object]] = {
 
 AUTH_USER_MODEL = 'forum.User'
 
+LOGIN_URL = 'login'
+LOGIN_REDIRECT_URL = 'index'
+LOGOUT_REDIRECT_URL = 'index'
+
 # New passwords are hashed with the first entry. The rest still verify older
 # hashes, which are re-hashed with Argon2 the next time that member logs in.
 PASSWORD_HASHERS: list[str] = [

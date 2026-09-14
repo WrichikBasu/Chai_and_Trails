@@ -10,7 +10,7 @@ from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.db.models import Model
 from django.http import HttpResponse
-from django.test import SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import dateformat, timezone
 
@@ -281,3 +281,102 @@ class ForumAdminTests(TestCase):
         for url in urls:
             with self.subTest(url=url):
                 self.assertEqual(self.client.get(url).status_code, 200)
+
+
+class RegistrationTests(TestCase):
+    def register(self, **fields: str) -> HttpResponse:
+        data: dict[str, str] = {
+            'username': 'meera', 'display_name': 'Meera Iyer', 'email': 'meera@example.com',
+            'location': 'Bengaluru', 'password1': 'monsoon-konkan-26', 'password2': 'monsoon-konkan-26',
+            'terms': 'on', **fields,
+        }
+        return self.client.post(reverse('register'), data)
+
+    def test_form_renders_with_a_real_csrf_token(self) -> None:
+        response = self.client.get(reverse('register'))
+        self.assertContains(response, 'name="csrfmiddlewaretoken"')
+        self.assertNotContains(response, 'EGQ9rWR2Nmrqblq9XlH1PBdXw3rHHyGdDlr6MC7iOoprgH1orcJUuETI5T8mta8A')
+        for name in ['username', 'display_name', 'email', 'location', 'password1', 'password2', 'terms']:
+            self.assertContains(response, f'name="{name}"')
+
+    def test_registering_creates_the_member_and_logs_them_in(self) -> None:
+        response = self.register()
+        self.assertRedirects(response, reverse('index'))
+
+        member = User.objects.get(username='meera')
+        self.assertEqual((member.display_name, member.email, member.location), ('Meera Iyer', 'meera@example.com', 'Bengaluru'))
+        self.assertTrue(member.password.startswith('argon2$argon2id$'))
+        self.assertTrue(member.check_password('monsoon-konkan-26'))
+        self.assertEqual(int(self.client.session['_auth_user_id']), member.pk)
+        self.assertContains(self.client.get(reverse('index')), '<span>Meera Iyer</span>', html=True)
+
+    def test_registering_works_with_csrf_checks_on(self) -> None:
+        browser = Client(enforce_csrf_checks=True)
+        browser.get(reverse('register'))  # sets the csrftoken cookie, as a real visit would
+        response = browser.post(reverse('register'), {
+            'csrfmiddlewaretoken': browser.cookies['csrftoken'].value,
+            'username': 'farida', 'email': 'farida@example.com',
+            'password1': 'konkan-coast-26', 'password2': 'konkan-coast-26', 'terms': 'on',
+        })
+        self.assertRedirects(response, reverse('index'), fetch_redirect_response=False)
+        self.assertEqual(User.objects.get(username='farida').display_name, 'farida')
+
+    def test_mismatched_passwords_are_refused(self) -> None:
+        response = self.register(password2='monsoon-konkan-27')
+        self.assertContains(response, 'The two password fields didn’t match.')
+        self.assertFalse(User.objects.filter(username='meera').exists())
+
+    def test_weak_password_is_refused(self) -> None:
+        response = self.register(username='wanderer', password1='meeraiyer', password2='meeraiyer')
+        self.assertContains(response, 'The password is too similar to the display name.')
+
+    def test_rules_must_be_accepted(self) -> None:
+        response = self.register(terms='')
+        self.assertContains(response, 'Please confirm you have read the forum rules.')
+
+    def test_email_and_username_must_be_unused(self) -> None:
+        User.objects.create_user('meera', 'MEERA@example.com', 'x')
+        response = self.register(username='Meera')
+        self.assertContains(response, 'A user with that username already exists.')
+        self.assertContains(response, 'An account with this email already exists.')
+
+    def test_username_cannot_contain_spaces(self) -> None:
+        response = self.register(username='meera iyer')
+        self.assertContains(response, 'Enter a valid username.')
+
+    def test_members_are_sent_away_from_registration(self) -> None:
+        self.client.force_login(User.objects.create_user('tenzin'))
+        self.assertRedirects(self.client.get(reverse('register')), reverse('index'))
+
+
+class LoginTests(TestCase):
+    @classmethod
+    def setUpTestData(cls) -> None:
+        User.objects.create_user('tenzin', 'tenzin@example.com', 'high-passes-26', display_name='Tenzin Norbu')
+
+    def test_log_in_log_out_and_back_in(self) -> None:
+        response = self.client.post(reverse('login'), {'username': 'tenzin', 'password': 'high-passes-26'})
+        self.assertRedirects(response, reverse('index'))
+        index = self.client.get(reverse('index'))
+        self.assertContains(index, '<span>Tenzin Norbu</span>', html=True)
+        self.assertContains(index, f'action="{reverse("logout")}"')
+
+        self.assertRedirects(self.client.post(reverse('logout')), reverse('index'))
+        self.assertContains(self.client.get(reverse('index')), f'href="{reverse("login")}"')
+
+        response = self.client.post(reverse('login'), {'username': 'tenzin', 'password': 'high-passes-26'})
+        self.assertRedirects(response, reverse('index'))
+
+    def test_wrong_password_shows_an_error(self) -> None:
+        response = self.client.post(reverse('login'), {'username': 'tenzin', 'password': 'wrong'})
+        self.assertContains(response, 'Please enter a correct username and password.')
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_login_returns_to_the_page_that_asked(self) -> None:
+        forum_url = '/forum/route-notes/'
+        response = self.client.post(reverse('login'), {'username': 'tenzin', 'password': 'high-passes-26', 'next': forum_url})
+        self.assertRedirects(response, forum_url, fetch_redirect_response=False)
+
+    def test_logout_needs_post(self) -> None:
+        self.client.force_login(User.objects.get(username='tenzin'))
+        self.assertEqual(self.client.get(reverse('logout')).status_code, 405)

@@ -1,7 +1,9 @@
+from django.contrib.auth import views as auth_views
 from django.urls import URLPattern, path
 from django.views.generic import TemplateView
 
 from . import views
+from .forms import LoginForm
 
 urlpatterns: list[URLPattern] = [
     path('', views.index, name='index'),
@@ -9,5 +11,13 @@ urlpatterns: list[URLPattern] = [
     path('thread/', TemplateView.as_view(template_name='thread.html'), name='thread'),
     path('new-thread/', TemplateView.as_view(template_name='new-thread.html'), name='new_thread'),
     path('members/', TemplateView.as_view(template_name='members.html'), name='members'),
-    path('register/', TemplateView.as_view(template_name='register.html'), name='register'),
+    path('register/', views.register, name='register'),
+    path(
+        'login/',
+        auth_views.LoginView.as_view(
+            template_name='login.html', authentication_form=LoginForm, redirect_authenticated_user=True,
+        ),
+        name='login',
+    ),
+    path('logout/', auth_views.LogoutView.as_view(), name='logout'),
 ]

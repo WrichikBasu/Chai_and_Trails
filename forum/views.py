@@ -1,10 +1,13 @@
 from typing import TypedDict
 
+from django.contrib.auth import login
 from django.db.models import Prefetch, QuerySet
 from django.http import HttpRequest, HttpResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.http import require_http_methods
 
+from .forms import RegistrationForm
 from .models import Category, Forum
 
 
@@ -42,3 +45,20 @@ def forum(request: HttpRequest, slug: str) -> HttpResponse:
         *({'title': parent.title, 'url': reverse('forum', args=[parent.slug])} for parent in parents),
     ]
     return render(request, 'forum.html', {'forum': current, 'breadcrumbs': breadcrumbs})
+
+
+@require_http_methods(['GET', 'POST'])
+def register(request: HttpRequest) -> HttpResponse:
+    if request.user.is_authenticated:
+        return redirect('index')
+
+    if request.method == 'POST':
+        # request.POST holds the form fields from the request body.
+        form = RegistrationForm(request.POST)
+        if form.is_valid():
+            member = form.save()  # creates the forum_user row, with the password hashed
+            login(request, member)
+            return redirect('index')
+    else:
+        form = RegistrationForm()
+    return render(request, 'register.html', {'form': form})
