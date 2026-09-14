@@ -133,7 +133,7 @@ class Thread(models.Model):
     last_posted_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
-        ordering = ['-is_pinned', '-last_posted_at']
+        ordering = ['-is_pinned', '-last_posted_at', '-id']  # id breaks ties between threads active at the same instant
         indexes = [models.Index(fields=['forum', '-is_pinned', '-last_posted_at'])]
 
     def __str__(self) -> str:
