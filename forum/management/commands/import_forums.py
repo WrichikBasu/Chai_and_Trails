@@ -149,8 +149,7 @@ class Command(BaseCommand):
         return post
 
     def sample_member(self, entry: JsonLastPost) -> User:
-        first_name, _, last_name = entry['author'].partition(' ')
-        profile = {'first_name': first_name, 'last_name': last_name, 'avatar_tone': entry['tone']}
+        profile = {'display_name': entry['author'], 'avatar_tone': entry['tone']}
         member, _ = User.objects.update_or_create(
             username=slugify(entry['author']),
             defaults=profile,

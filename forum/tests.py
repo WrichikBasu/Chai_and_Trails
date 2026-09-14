@@ -4,6 +4,8 @@ from io import StringIO
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.db.models import Model
@@ -25,6 +27,17 @@ class UserModelTests(TestCase):
         self.assertIn(member.avatar_tone, Tone.values)
         self.assertEqual(member.rank, 'Member')
         self.assertEqual(member.location, '')
+        self.assertEqual(member.display_name, 'meera')  # blank falls back to the username
+
+    def test_display_name_is_the_members_full_name(self) -> None:
+        member = User.objects.create_user('meera-iyer', display_name='Meera Iyer')
+        self.assertEqual(member.display_name, 'Meera Iyer')
+        self.assertEqual(member.get_full_name(), 'Meera Iyer')
+
+    def test_password_must_not_resemble_display_name(self) -> None:
+        member = User(username='t', display_name='Tenzin Norbu')
+        with self.assertRaises(ValidationError):
+            validate_password('tenzinnorbu', member)
 
     def test_tone_outside_palette_is_rejected(self) -> None:
         with self.assertRaises(IntegrityError):

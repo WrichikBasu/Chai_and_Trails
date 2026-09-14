@@ -117,6 +117,8 @@ PASSWORD_HASHERS: list[str] = [
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        # The default list names first_name and last_name, which User replaces.
+        'OPTIONS': {'user_attributes': ('username', 'display_name', 'email')},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',

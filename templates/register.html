@@ -847,7 +847,12 @@ textarea.control { min-height: 11rem; resize: vertical; }
     <div class="field">
       <label for="id_username">Username</label>
       <input class="control" id="id_username" name="username" type="text" autocomplete="username">
-      <p class="hint">This is what shows on every post. It cannot be changed later.</p>
+      <p class="hint">What you sign in with. Letters, digits and @ . + - _ only. It cannot be changed later.</p>
+    </div>
+    <div class="field">
+      <label for="id_display_name">Display name</label>
+      <input class="control" id="id_display_name" name="display_name" type="text" autocomplete="name" maxlength="150">
+      <p class="hint">Shown on every post. Spaces are fine, and you can change it later. Leave it blank to use your username.</p>
     </div>
     <div class="field">
       <label for="id_email">Email</label>

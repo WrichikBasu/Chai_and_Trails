@@ -27,6 +27,14 @@ def random_tone() -> int:
 
 
 class User(AbstractUser):
+    # One free-form name instead of Django's first/last split, which doesn't fit
+    # every name. Usernames can't contain spaces, so this is what posts show.
+    first_name = None
+    last_name = None
+    display_name = models.CharField(
+        max_length=150, blank=True,
+        help_text='Shown on posts and profiles. Left blank, the username is used.',
+    )
     avatar_tone = models.PositiveSmallIntegerField(choices=Tone, default=random_tone)
     rank = models.CharField(max_length=40, default='Member')
     location = models.CharField('based in', max_length=100, blank=True)
@@ -40,10 +48,17 @@ class User(AbstractUser):
             ),
         ]
 
-    @property
-    def display_name(self) -> str:
-        """Full name where given (usernames can't contain spaces), else the username."""
-        return self.get_full_name() or self.username
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self.display_name:
+            self.display_name = self.username
+        super().save(*args, **kwargs)
+
+    # AbstractUser builds these from first_name and last_name, which no longer exist.
+    def get_full_name(self) -> str:
+        return self.display_name
+
+    def get_short_name(self) -> str:
+        return self.display_name
 
 
 class Category(models.Model):
@@ -126,15 +141,21 @@ class Thread(models.Model):
 
 
 class Post(models.Model):
+
     thread = models.ForeignKey(Thread, on_delete=models.CASCADE, related_name='posts')
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='posts')
-    body_source = models.TextField()  # what the member typed; edited and re-rendered from here
-    body_html = models.TextField()  # rendered and sanitised on save; what pages show
+
+    body_source = models.TextField()
+    '''what the member typed; edited and re-rendered from here'''
+
+    body_html = models.TextField()
+    '''rendered and sanitised on save; what pages show'''
+
     created_at = models.DateTimeField(default=timezone.now)
     edited_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ['created_at']
+        ordering = ['created_at', 'id']  # id breaks ties between posts made at the same instant
         indexes = [models.Index(fields=['thread', 'created_at'])]
 
     def __str__(self) -> str:
