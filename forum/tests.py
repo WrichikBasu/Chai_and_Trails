@@ -9,6 +9,7 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.db.models import Model
+from django.http import HttpResponse
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import dateformat, timezone
@@ -209,3 +210,74 @@ class ForumPageTests(TestCase):
     def test_unknown_forum_is_404(self) -> None:
         response = self.client.get(reverse('forum', args=['no-such-forum']))
         self.assertEqual(response.status_code, 404)
+
+
+class ForumAdminTests(TestCase):
+    staff: User
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.staff = User.objects.create_superuser('boss', 'boss@example.com', 'chai-and-trails')
+
+    def setUp(self) -> None:
+        self.client.force_login(self.staff)
+
+    def save_forum(self, url: str, **fields: object) -> HttpResponse:
+        data: dict[str, object] = {
+            'title': 'Spiti Valley', 'slug': 'spiti-valley', 'description': 'Kaza, Tabo and the loop.',
+            'category': '', 'parent': '', 'position': 9, **fields,
+        }
+        return self.client.post(url, data)
+
+    def test_subforum_added_in_admin_appears_on_the_site(self) -> None:
+        route_notes = Forum.objects.get(slug='route-notes')
+        response = self.save_forum(reverse('admin:forum_forum_add'), parent=route_notes.pk)
+        self.assertRedirects(response, reverse('admin:forum_forum_changelist'))
+
+        self.assertContains(self.client.get(reverse('index')), reverse('forum', args=['spiti-valley']))
+        page = self.client.get(reverse('forum', args=['spiti-valley']))
+        self.assertContains(page, '<h1>Spiti Valley</h1>', html=True)
+        self.assertContains(page, f'<a href="{reverse("forum", args=["route-notes"])}">Route notes</a>', html=True)
+
+        parent_page = self.client.get(reverse('forum', args=['route-notes']))
+        self.assertContains(parent_page, 'Spiti Valley')
+        self.assertContains(parent_page, 'No posts yet')
+
+    def test_forum_in_both_category_and_parent_is_refused(self) -> None:
+        response = self.save_forum(
+            reverse('admin:forum_forum_add'),
+            category=Category.objects.get(slug='before-you-go').pk,
+            parent=Forum.objects.get(slug='route-notes').pk,
+        )
+        self.assertContains(response, 'A forum needs either a category (top level) or a parent forum')
+        self.assertFalse(Forum.objects.filter(slug='spiti-valley').exists())
+
+    def test_forum_cannot_move_inside_its_own_subforum(self) -> None:
+        route_notes = Forum.objects.get(slug='route-notes')
+        response = self.save_forum(
+            reverse('admin:forum_forum_change', args=[route_notes.pk]),
+            title=route_notes.title, slug=route_notes.slug, description=route_notes.description,
+            parent=Forum.objects.get(slug='himalaya-and-ladakh').pk,
+        )
+        self.assertContains(response, 'A forum cannot sit inside itself or one of its own subforums.')
+        route_notes.refresh_from_db()
+        self.assertIsNone(route_notes.parent)
+
+    def test_threads_and_posts_are_not_added_in_admin(self) -> None:
+        for url in [reverse('admin:forum_thread_add'), reverse('admin:forum_post_add')]:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_admin_pages_load(self) -> None:
+        thread = Thread.objects.first()
+        assert thread is not None and thread.last_post is not None
+        urls: list[str] = [
+            *(reverse(f'admin:forum_{name}_changelist') for name in ['user', 'category', 'forum', 'thread', 'post']),
+            reverse('admin:forum_forum_change', args=[Forum.objects.get(slug='route-notes').pk]),
+            reverse('admin:forum_thread_change', args=[thread.pk]),
+            reverse('admin:forum_post_change', args=[thread.last_post.pk]),
+        ]
+        for url in urls:
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200)

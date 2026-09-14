@@ -4,6 +4,7 @@ from typing import Any, Final
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -99,11 +100,20 @@ class Forum(models.Model):
                     | models.Q(category__isnull=True, parent__isnull=False)
                 ),
                 name='forum_in_category_xor_parent',
+                violation_error_message='A forum needs either a category (top level) or a parent forum (subforum), but not both.',
             ),
         ]
 
     def __str__(self) -> str:
         return self.title
+
+    def clean(self) -> None:
+        # A loop (A inside B inside A) would make ancestors() walk forever.
+        parent = self.parent
+        while parent is not None:
+            if parent.pk == self.pk:
+                raise ValidationError({'parent': 'A forum cannot sit inside itself or one of its own subforums.'})
+            parent = parent.parent
 
     def ancestors(self) -> list[Forum]:
         """Parent forums, outermost first; empty for a top-level forum."""
