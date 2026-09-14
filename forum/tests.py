@@ -1,7 +1,74 @@
-from django.test import SimpleTestCase
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from .forum_data import iter_forums, load_categories
+from .models import Category, Forum, Thread, Tone, User
+
+
+class UserModelTests(TestCase):
+    def test_custom_user_model_is_active(self) -> None:
+        self.assertIs(get_user_model(), User)
+
+    def test_new_member_gets_profile_defaults(self) -> None:
+        member = User.objects.create_user('meera', password='chai-and-trails')
+        self.assertIn(member.avatar_tone, Tone.values)
+        self.assertEqual(member.rank, 'Member')
+        self.assertEqual(member.location, '')
+
+    def test_tone_outside_palette_is_rejected(self) -> None:
+        with self.assertRaises(IntegrityError):
+            User.objects.create_user('tenzin', password='chai-and-trails', avatar_tone=7)
+
+
+class ForumModelTests(TestCase):
+    category: Category
+    route_notes: Forum
+    member: User
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.category = Category.objects.create(slug='before-you-go', title='Before you go')
+        cls.route_notes = Forum.objects.create(
+            category=cls.category, slug='route-notes', title='Route notes', description='Roads.',
+        )
+        Forum.objects.create(
+            parent=cls.route_notes, slug='himalaya-and-ladakh', title='Himalaya and Ladakh', description='Passes.',
+        )
+        cls.member = User.objects.create_user('meera', password='chai-and-trails')
+
+    def test_category_forums_are_top_level_only(self) -> None:
+        self.assertQuerySetEqual(self.category.forums.all(), [self.route_notes])
+        self.assertEqual([f.slug for f in self.route_notes.children.all()], ['himalaya-and-ladakh'])
+
+    def test_forum_needs_exactly_one_of_category_or_parent(self) -> None:
+        for slug, placement in [
+            ('in-both', {'category': self.category, 'parent': self.route_notes}),
+            ('in-neither', {}),
+        ]:
+            with self.subTest(slug=slug), self.assertRaises(IntegrityError), transaction.atomic():
+                Forum.objects.create(slug=slug, title=slug, description='', **placement)
+
+    def test_threads_list_pinned_first_then_latest_activity(self) -> None:
+        now = timezone.now()
+        titles: list[tuple[str, bool, timedelta]] = [
+            ('Old pinned rules', True, timedelta(days=90)),
+            ('Quiet thread', False, timedelta(days=3)),
+            ('Busy thread', False, timedelta(minutes=5)),
+        ]
+        for title, pinned, age in titles:
+            Thread.objects.create(
+                forum=self.route_notes, author=self.member, title=title,
+                is_pinned=pinned, last_posted_at=now - age,
+            )
+        self.assertEqual(
+            [t.title for t in self.route_notes.threads.all()],
+            ['Old pinned rules', 'Busy thread', 'Quiet thread'],
+        )
 
 
 class ForumDataTests(SimpleTestCase):
