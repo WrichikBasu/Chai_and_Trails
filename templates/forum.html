@@ -1,24 +1,11 @@
 {% extends "base.html" %}
+{% load humanize %}
 
 {% block title %}{{ forum.title }} | Chai &amp; Trails{% endblock %}
 
 {% block description %}{{ forum.description }}{% endblock %}
 
-{% block crumbs %}
-<div class="crumbs">
-  <div class="shell">
-    <nav aria-label="Breadcrumb">
-      <ol>
-        <li><a href="{% url 'index' %}">Forums</a></li>
-        {% for crumb in breadcrumbs %}
-          <li><a href="{{ crumb.url }}">{{ crumb.title }}</a></li>
-        {% endfor %}
-        <li aria-current="page">{{ forum.title }}</li>
-      </ol>
-    </nav>
-  </div>
-</div>
-{% endblock %}
+{% block crumbs %}{% include "partials/crumbs.html" with current=forum.title %}{% endblock %}
 
 {% block content %}
 <div class="pagehead">
@@ -27,13 +14,12 @@
     <p>{{ forum.description }}</p>
   </div>
   <div class="pagehead__side">
-    <a class="btn btn--go" href="{% url 'new_thread' %}">Start a thread</a>
+    <a class="btn btn--go" href="{% url 'new_thread' %}?forum={{ forum.slug }}">Start a thread</a>
     <a class="btn" href="#watch">Watch</a>
   </div>
 </div>
 
-
-  {% if forum.children.all %}
+{% if forum.children.all %}
   <section class="block">
     <div class="block__bar block__bar--plain"><h2>Sections inside {{ forum.title }}</h2></div>
     <ul>
@@ -42,8 +28,7 @@
       {% endfor %}
     </ul>
   </section>
-  {% endif %}
-
+{% endif %}
 
 <div class="toolbar">
   <div class="toolbar__filters">
@@ -52,7 +37,10 @@
     <a href="#">Most replies</a>
     <a href="#">Unanswered</a>
   </div>
-  <p style="margin:0;color:var(--muted);font-size:var(--t-sm)">4,120 threads &middot; showing 10</p>
+  <p style="margin:0;color:var(--muted);font-size:var(--t-sm)">
+    {{ page_obj.paginator.count|intcomma }} thread{{ page_obj.paginator.count|pluralize }}
+    {% if page_obj.paginator.count %}&middot; showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}{% endif %}
+  </p>
 </div>
 
 <section class="block">
@@ -60,444 +48,20 @@
     <h2>Threads</h2>
     <a href="whats-new.html">Mark this section read</a>
   </div>
-  <ul>
-    
-      
-<li class="thread thread--pinned">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-2" aria-hidden="true">A</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      <span class="chip chip--pinned">Pinned</span>
-      
-      
-      <a href="{% url 'thread' %}">Read this before you post a route question</a>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Arjun Sethi</a>
-      started 12 Jan 2024
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>18</dd></div>
-    <div><dt>Views</dt><dd>94K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-2 avatar--sm" aria-hidden="true">A</span>
-
-    <span>
-      <span class="last__title">3 Mar 2026</span>
-      <span class="last__meta"><a href="profile.html">Arjun Sethi</a></span>
-    </span>
-  </div>
-</li>
-
-    
-      
-<li class="thread thread--pinned thread--unread">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-4" aria-hidden="true">T</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      <span class="chip chip--pinned">Pinned</span>
-      
-      
-      <a href="{% url 'thread' %}">Road status thread: Himachal, monsoon 2026</a>
-      
-        <span class="thread__pages">
-          <a href="{% url 'thread' %}">1</a><a href="{% url 'thread' %}">2</a><a href="{% url 'thread' %}">3</a><a href="{% url 'thread' %}">41</a>
-        </span>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Tenzin Norbu</a>
-      started 2 Jun 2026
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>1,204</dd></div>
-    <div><dt>Views</dt><dd>212K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-4 avatar--sm" aria-hidden="true">T</span>
-
-    <span>
-      <span class="last__title">22 minutes ago</span>
-      <span class="last__meta"><a href="profile.html">Tenzin Norbu</a></span>
-    </span>
-  </div>
-</li>
-
-    
-      
-<li class="thread thread--unread">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-1" aria-hidden="true">M</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      
-      
-      <span class="chip chip--route">Route question</span>
-      <a href="{% url 'thread' %}">Manali to Kaza, first week of June</a>
-      
-        <span class="thread__pages">
-          <a href="{% url 'thread' %}">1</a><a href="{% url 'thread' %}">2</a><a href="{% url 'thread' %}">3</a><a href="{% url 'thread' %}">5</a>
-        </span>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Meera Iyer</a>
-      started 18 Apr 2026
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>96</dd></div>
-    <div><dt>Views</dt><dd>18K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-4 avatar--sm" aria-hidden="true">T</span>
-
-    <span>
-      <span class="last__title">22 minutes ago</span>
-      <span class="last__meta"><a href="profile.html">Tenzin Norbu</a></span>
-    </span>
-  </div>
-</li>
-
-    
-      
-<li class="thread thread--unread">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-5" aria-hidden="true">S</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      
-      
-      
-      <a href="{% url 'thread' %}">Is the Atal Tunnel open at night yet?</a>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Sam Fernandes</a>
-      started 29 Aug 2026
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>12</dd></div>
-    <div><dt>Views</dt><dd>1.4K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-2 avatar--sm" aria-hidden="true">A</span>
-
-    <span>
-      <span class="last__title">1 hour ago</span>
-      <span class="last__meta"><a href="profile.html">Arjun Sethi</a></span>
-    </span>
-  </div>
-</li>
-
-    
-      
-<li class="thread">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-3" aria-hidden="true">F</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      
-      
-      
-      <a href="{% url 'thread' %}">Fuel gap between Tabo and Nako, honest numbers</a>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Farida Qureshi</a>
-      started 11 Jul 2026
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>34</dd></div>
-    <div><dt>Views</dt><dd>6.1K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-4 avatar--sm" aria-hidden="true">T</span>
-
-    <span>
-      <span class="last__title">3 hours ago</span>
-      <span class="last__meta"><a href="profile.html">Tenzin Norbu</a></span>
-    </span>
-  </div>
-</li>
-
-    
-      
-<li class="thread">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-6" aria-hidden="true">P</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      
-      
-      <span class="chip chip--route">Route question</span>
-      <a href="{% url 'thread' %}">Which side of the Ghats in September, Amboli or Tamhini?</a>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Priyanka Rao</a>
-      started 26 Aug 2026
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>21</dd></div>
-    <div><dt>Views</dt><dd>2.8K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-5 avatar--sm" aria-hidden="true">S</span>
-
-    <span>
-      <span class="last__title">Yesterday at 10:04 PM</span>
-      <span class="last__meta"><a href="profile.html">Sam Fernandes</a></span>
-    </span>
-  </div>
-</li>
-
-    
-      
-<li class="thread">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-2" aria-hidden="true">D</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      
-      
-      
-      <a href="{% url 'thread' %}">Sach Pass in a stock hatchback: talk me out of it</a>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Dev Mahato</a>
-      started 24 Aug 2026
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>58</dd></div>
-    <div><dt>Views</dt><dd>4.9K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-2 avatar--sm" aria-hidden="true">A</span>
-
-    <span>
-      <span class="last__title">Yesterday at 6:30 PM</span>
-      <span class="last__meta"><a href="profile.html">Arjun Sethi</a></span>
-    </span>
-  </div>
-</li>
-
-    
-      
-<li class="thread">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-1" aria-hidden="true">L</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      
-      
-      
-      <a href="{% url 'thread' %}">Guwahati to Tawang, road condition after the landslides</a>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Lhamo Sherpa</a>
-      started 9 Aug 2026
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>77</dd></div>
-    <div><dt>Views</dt><dd>11K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-1 avatar--sm" aria-hidden="true">M</span>
-
-    <span>
-      <span class="last__title">Tuesday at 9:12 AM</span>
-      <span class="last__meta"><a href="profile.html">Meera Iyer</a></span>
-    </span>
-  </div>
-</li>
-
-    
-      
-<li class="thread">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-2" aria-hidden="true">A</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      
-      
-      
-      <a href="{% url 'thread' %}">Night driving on NH44: where do you actually stop?</a>
-      
-        <span class="thread__pages">
-          <a href="{% url 'thread' %}">1</a><a href="{% url 'thread' %}">2</a><a href="{% url 'thread' %}">3</a><a href="{% url 'thread' %}">6</a>
-        </span>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Arjun Sethi</a>
-      started 3 Aug 2026
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>142</dd></div>
-    <div><dt>Views</dt><dd>24K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-3 avatar--sm" aria-hidden="true">F</span>
-
-    <span>
-      <span class="last__title">Monday at 11:47 PM</span>
-      <span class="last__meta"><a href="profile.html">Farida Qureshi</a></span>
-    </span>
-  </div>
-</li>
-
-    
-      
-<li class="thread">
-  <a class="thread__avatar" href="profile.html">
-    
-<span class="avatar tone-2" aria-hidden="true">A</span>
-
-  </a>
-
-  <div class="thread__main">
-    <h3 class="thread__title">
-      
-      <span class="chip chip--closed">Closed</span>
-      
-      <a href="{% url 'thread' %}">Closed: repeated ask for illegal border crossing</a>
-      
-    </h3>
-    <p class="thread__meta">
-      <a href="profile.html">Arjun Sethi</a>
-      started 1 Aug 2026
-    </p>
-  </div>
-
-  <dl class="thread__count">
-    <div><dt>Replies</dt><dd>4</dd></div>
-    <div><dt>Views</dt><dd>3.2K</dd></div>
-  </dl>
-
-  <div class="thread__last last">
-    
-<span class="avatar tone-2 avatar--sm" aria-hidden="true">A</span>
-
-    <span>
-      <span class="last__title">1 Aug 2026</span>
-      <span class="last__meta"><a href="profile.html">Arjun Sethi</a></span>
-    </span>
-  </div>
-</li>
-
-    
-  </ul>
+  {% if threads %}
+    <ul>
+      {% for thread in threads %}
+        {% include "partials/thread_row.html" %}
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="block__body">
+      <p>No threads here yet. <a href="{% url 'new_thread' %}?forum={{ forum.slug }}">Start the first one.</a></p>
+    </div>
+  {% endif %}
 </section>
 
-
-<nav class="pager" aria-label="Pagination">
-  
-  
-    
-      <span aria-current="page">1</span>
-    
-  
-    
-      <a href="{% url 'forum' forum.slug %}">2</a>
-    
-  
-    
-      <a href="{% url 'forum' forum.slug %}">3</a>
-    
-  
-    
-      <a href="{% url 'forum' forum.slug %}">4</a>
-    
-  
-    
-      <span class="pager__gap">&hellip;</span>
-    
-  
-    
-      <a href="{% url 'forum' forum.slug %}">12</a>
-    
-  
-  <a href="{% url 'forum' forum.slug %}" rel="next">Next</a>
-</nav>
-
+{% include "partials/pager.html" %}
 
 <div class="toolbar" id="watch">
   <p style="margin:0;font-size:var(--t-sm);color:var(--muted)">Get an email when someone posts in {{ forum.title }}.</p>

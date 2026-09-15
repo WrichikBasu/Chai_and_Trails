@@ -1,0 +1,35 @@
+{% load humanize forum_extras %}
+<li class="thread{% if thread.is_pinned %} thread--pinned{% endif %}">
+  <a class="thread__avatar" href="profile.html">
+    <span class="avatar tone-{{ thread.author.avatar_tone }}" aria-hidden="true">{{ thread.author.display_name|first }}</span>
+  </a>
+
+  <div class="thread__main">
+    <h3 class="thread__title">
+      {% if thread.is_pinned %}<span class="chip chip--pinned">Pinned</span>{% endif %}
+      {% if thread.is_closed %}<span class="chip chip--closed">Closed</span>{% endif %}
+      <a href="{{ thread.get_absolute_url }}">{{ thread.title }}</a>
+    </h3>
+    <p class="thread__meta">
+      <a href="profile.html">{{ thread.author.display_name }}</a>
+      started {{ thread.created_at|date:"j M Y" }}
+    </p>
+  </div>
+
+  <dl class="thread__count">
+    <div><dt>Replies</dt><dd>{{ thread.reply_count|intcomma }}</dd></div>
+    <div><dt>Views</dt><dd>{{ thread.view_count|compact_count }}</dd></div>
+  </dl>
+
+  <div class="thread__last last">
+    {% with post=thread.last_post %}
+      {% if post %}
+        <span class="avatar tone-{{ post.author.avatar_tone }} avatar--sm" aria-hidden="true">{{ post.author.display_name|first }}</span>
+        <span>
+          <a class="last__title" href="{{ thread.get_absolute_url }}?page=last#post-{{ post.pk }}">{{ post.created_at|forum_time }}</a>
+          <span class="last__meta"><a href="profile.html">{{ post.author.display_name }}</a></span>
+        </span>
+      {% endif %}
+    {% endwith %}
+  </div>
+</li>

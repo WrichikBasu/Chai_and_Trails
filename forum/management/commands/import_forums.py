@@ -14,11 +14,13 @@ from typing import Any, Final, TypedDict
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Count, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.utils import timezone
-from django.utils.html import escape
 from django.utils.text import slugify
 
 from forum.models import Category, Forum, Post, Thread, User
+from forum.rendering import render_body
 
 DATA_FILE: Final[Path] = Path(__file__).resolve().parents[2] / 'data' / 'forums.json'
 
@@ -99,6 +101,11 @@ class Command(BaseCommand):
             for forum_position, forum_entry in enumerate(entry['forums']):
                 self.import_forum(forum_entry, forum_position, category, None, now)
 
+        # Recount every member's posts. New sample members start at 0, and for everyone
+        # else the recount matches the count posting already keeps.
+        per_author = Post.objects.filter(author=OuterRef('pk')).values('author').annotate(total=Count('pk')).values('total')
+        User.objects.update(post_count=Coalesce(Subquery(per_author), 0))
+
         self.stdout.write(self.style.SUCCESS(
             f'Imported {len(data["categories"])} categories and {Forum.objects.count()} forums from {path.name}.'
         ))
@@ -142,7 +149,7 @@ class Command(BaseCommand):
         post, _ = Post.objects.update_or_create(
             thread=thread, author=author,
             defaults={'created_at': posted_at},
-            create_defaults={'created_at': posted_at, 'body_source': body, 'body_html': f'<p>{escape(body)}</p>'},
+            create_defaults={'created_at': posted_at, 'body_source': body, 'body_html': render_body(body)},
         )
         thread.last_post = post
         thread.save(update_fields=['last_post'])

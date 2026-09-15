@@ -1,10 +1,18 @@
-from typing import Any
+from collections.abc import Iterator
+from functools import cached_property
+from typing import Any, Final
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.core.exceptions import ValidationError
 
-from .models import User
+from .models import Category, Forum, Thread, User
+
+POST_MAX_LENGTH: Final[int] = 20_000
+MARKDOWN_HINT: Final[str] = (
+    'Formatting uses Markdown: **bold**, _italic_, [link text](https://…), > quote, - list. '
+    'HTML is shown as plain text.'
+)
 
 
 def style_controls(form: forms.BaseForm) -> None:
@@ -58,4 +66,64 @@ class RegistrationForm(UserCreationForm):
 class LoginForm(AuthenticationForm):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
+        style_controls(self)
+
+
+def forum_choices() -> Iterator[tuple[int, str]]:
+    """Every forum in index order, labelled with its path: "On the road: Trip logs › On foot"."""
+    def walk(forums: list[Forum], path: str) -> Iterator[tuple[int, str]]:
+        for forum in forums:
+            label = f'{path}{forum.title}'
+            yield forum.pk, label
+            yield from walk(list(forum.children.all()), f'{label} › ')
+
+    for category in Category.objects.prefetch_related('forums__children__children'):
+        yield from walk(list(category.forums.all()), f'{category.title}: ')
+
+
+def body_field() -> forms.CharField:
+    return forms.CharField(
+        max_length=POST_MAX_LENGTH,
+        help_text=MARKDOWN_HINT,
+        widget=forms.Textarea(attrs={'rows': 10}),
+    )
+
+
+class NewThreadForm(forms.ModelForm):
+    """A ModelForm for Thread's own fields, plus the opening post's text."""
+
+    body = body_field()
+
+    class Meta:
+        model = Thread
+        fields = ('forum', 'title')
+        labels = {'forum': 'Post it in'}
+        help_texts = {'title': 'Say where and when. "Manali to Kaza, first week of June" beats "help needed urgent".'}
+        widgets = {'title': forms.TextInput(attrs={'placeholder': 'Route, month, vehicle'})}
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # A callable, so the menu's queries run only when the form is displayed. Validating a
+        # submission checks the chosen forum through the field's queryset instead.
+        self.fields['forum'].choices = lambda: self.forum_menu
+        self.fields['body'].label = 'Post'
+        self.fields['body'].widget.attrs['placeholder'] = 'Dates, vehicle, budget, what you have already booked.'
+        style_controls(self)
+
+    @cached_property
+    def forum_menu(self) -> list[tuple[int | str, str]]:
+        # Cached: the <select> widget reads its choices twice when drawn (once to check the first option).
+        return [('', 'Choose a section'), *forum_choices()]
+
+
+class ReplyForm(forms.Form):
+    body = body_field()
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields['body'].label = 'Your reply'
+        self.fields['body'].widget.attrs.update({
+            'id': 'reply-body',  # the Quote buttons add to this box
+            'placeholder': 'Add what you know: road condition, fuel stops, where you stayed, what it cost.',
+        })
         style_controls(self)

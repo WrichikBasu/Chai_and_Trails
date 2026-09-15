@@ -1,0 +1,18 @@
+<div class="field">
+  <label for="{{ field.id_for_label }}"{% if hide_label %} class="only-screenreader"{% endif %}>{{ field.label }}</label>
+  <div class="editor">
+    {# Each button wraps the selected text in Markdown; see site.js. #}
+    <div class="editor__tools" role="toolbar" aria-label="Formatting">
+      <button type="button" title="Bold" data-md="bold"><strong>B</strong></button>
+      <button type="button" title="Italic" data-md="italic"><em>I</em></button>
+      <button type="button" title="Link" data-md="link">Link</button>
+      <button type="button" title="Quote" data-md="quote">Quote</button>
+      <button type="button" title="List" data-md="list">List</button>
+    </div>
+    {{ field }}
+  </div>
+  {% if field.errors %}
+    <ul class="errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  {% endif %}
+  <p class="hint" id="{{ field.id_for_label }}_helptext">{{ field.help_text }}</p>
+</div>

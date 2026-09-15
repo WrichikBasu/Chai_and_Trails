@@ -1,298 +1,47 @@
 {% extends "base.html" %}
+{% load humanize forum_extras %}
 
-{% block title %}Manali to Kaza, first week of June | Chai &amp; Trails{% endblock %}
+{% block title %}{{ thread.title }} | Chai &amp; Trails{% endblock %}
 
-{% block crumbs %}
-<div class="crumbs">
-  <div class="shell">
-    <nav aria-label="Breadcrumb">
-      <ol>
-        <li><a href="{% url 'index' %}">Forums</a></li>
-        
-          
-            <li><a href="{% url 'forum' 'route-notes' %}">Route notes</a></li>
-          
-        
-          
-            <li aria-current="page">Manali to Kaza, first week of June</li>
-          
-        
-      </ol>
-    </nav>
-  </div>
-</div>
-{% endblock %}
+{% block crumbs %}{% include "partials/crumbs.html" with current=thread.title %}{% endblock %}
 
 {% block content %}
 <div class="thread-head">
-  <h1>Manali to Kaza, first week of June</h1>
+  <h1>{{ thread.title }}</h1>
   <div class="thread-head__meta">
-    <span class="chip chip--route">Route question</span>
-    <span>Started by <a href="profile.html">Meera Iyer</a> on 18 Apr 2026</span>
-    <span>96 replies</span>
-    <span>18K views</span>
-    <a href="#reply">Jump to reply box</a>
+    {% if thread.is_pinned %}<span class="chip chip--pinned">Pinned</span>{% endif %}
+    {% if thread.is_closed %}<span class="chip chip--closed">Closed</span>{% endif %}
+    <span>Started by <a href="profile.html">{{ thread.author.display_name }}</a> on {{ thread.created_at|date:"j M Y" }}</span>
+    <span>{{ thread.reply_count|intcomma }} repl{{ thread.reply_count|pluralize:"y,ies" }}</span>
+    <span>{{ thread.view_count|compact_count }} view{{ thread.view_count|pluralize }}</span>
+    {% if not thread.is_closed %}<a href="#reply">Jump to reply box</a>{% endif %}
   </div>
 </div>
 
-<div class="toolbar">
-  <div class="toolbar__filters">
-    <a href="#" aria-current="true">All posts</a>
-    <a href="#">Photos only</a>
-    <a href="#">By Meera Iyer</a>
-  </div>
-  <div class="pagehead__side">
-    <a class="btn" href="#reply">Reply</a>
-    <a class="btn" href="#watch">Watch</a>
-  </div>
-</div>
+{% for post in posts %}
+  {% include "partials/post.html" with number=page_obj.start_index|add:forloop.counter0 %}
+{% endfor %}
 
-
-  <article class="post post--op" id="post-1">
-    <div class="post__who">
-      <a href="profile.html">
-<span class="avatar tone-1 avatar--lg" aria-hidden="true">M</span>
-</a>
-      <div>
-        <a class="post__name" href="profile.html">Meera Iyer</a>
-        <p class="post__rank">Trail regular</p>
-        <dl class="post__facts">
-          <div><dt>Joined</dt><dd>Mar 2019</dd></div>
-          <div><dt>Posts</dt><dd>1,842</dd></div>
-          <div><dt>Based in</dt><dd>Bengaluru</dd></div>
-          <div><dt>Rides</dt><dd>Himalayan 450</dd></div>
-        </dl>
-      </div>
-    </div>
-
-    <div class="post__body">
-      <div class="post__bar">
-        <span>18 April 2026 at 11:04 AM</span>
-        <a class="post__no" href="#post-1">#1</a>
-      </div>
-
-      <div class="post__text">
-        
-
-        <p>Planning to ride Manali to Kaza in the first week of June with a friend on a second bike. Both of us have done Ladakh once, neither of us has done Spiti.</p><p>What I think I know so far:</p><ul><li>Gramphu to Batal is the part that decides the day. Everything I read says four hours minimum, six if the nullahs are running.</li><li>Water crossings peak in the afternoon, so Batal by noon or wait it out.</li><li>Fuel at Manali, then nothing serious until Kaza.</li></ul><p>Questions I have not been able to answer: is the Chhota Dara stretch graded this year, and is there any point carrying a spare 5 litre can if we are not detouring to Chandratal?</p>
-
-        
-          <figure class="figure">
-            <div class="figure__frame">Route sketch: Manali, Gramphu, Batal, Losar, Kaza</div>
-            <figcaption>Rough plan. Four riding days, one spare day for weather.</figcaption>
-          </figure>
-        
-      </div>
-
-      
-        <p class="post__sign">Slow is a speed, not a failure.</p>
-      
-
-      <div class="post__acts">
-        <button class="btn btn--quiet" type="button">Like (62)</button>
-        <button class="btn btn--quiet" type="button" data-quote="Meera Iyer">Quote</button>
-        <a class="btn btn--quiet" href="#post-1">Share</a>
-        <span class="spacer"></span>
-        <a class="btn btn--quiet" href="#report">Report</a>
-      </div>
-    </div>
-  </article>
-
-  <article class="post" id="post-2">
-    <div class="post__who">
-      <a href="profile.html">
-<span class="avatar tone-4 avatar--lg" aria-hidden="true">T</span>
-</a>
-      <div>
-        <a class="post__name" href="profile.html">Tenzin Norbu</a>
-        <p class="post__rank">Local knowledge</p>
-        <dl class="post__facts">
-          <div><dt>Joined</dt><dd>Jul 2016</dd></div>
-          <div><dt>Posts</dt><dd>2,077</dd></div>
-          <div><dt>Based in</dt><dd>Leh</dd></div>
-          <div><dt>Rides</dt><dd>Bolero Camper</dd></div>
-        </dl>
-      </div>
-    </div>
-
-    <div class="post__body">
-      <div class="post__bar">
-        <span>18 April 2026 at 12:47 PM</span>
-        <a class="post__no" href="#post-2">#2</a>
-      </div>
-
-      <div class="post__text">
-        
-          <blockquote class="quote">
-            <p class="quote__who">Meera Iyer said:</p>
-            <p>is the Chhota Dara stretch graded this year</p>
-          </blockquote>
-        
-
-        <p>Partly. The BRO worked on it through last September and it held up over winter, but the section right after Chhota Dara goes back to loose rock every June because of the melt. Expect it to be rideable, not comfortable.</p><p>Carry the spare fuel anyway. Not for distance, for the day you sit at a nullah for three hours with the engine idling and then take the long way round. Five litres strapped low is worth the nuisance.</p><h3>Timing</h3><p>Leave Manali by 5 AM. Not 6. The queue at the tunnel and the crossings both punish a late start, and you want to be past Batal before the water comes up.</p>
-
-        
-      </div>
-
-      
-
-      <div class="post__acts">
-        <button class="btn btn--quiet" type="button">Like (148)</button>
-        <button class="btn btn--quiet" type="button" data-quote="Tenzin Norbu">Quote</button>
-        <a class="btn btn--quiet" href="#post-2">Share</a>
-        <span class="spacer"></span>
-        <a class="btn btn--quiet" href="#report">Report</a>
-      </div>
-    </div>
-  </article>
-
-  <article class="post" id="post-3">
-    <div class="post__who">
-      <a href="profile.html">
-<span class="avatar tone-2 avatar--lg" aria-hidden="true">A</span>
-</a>
-      <div>
-        <a class="post__name" href="profile.html">Arjun Sethi</a>
-        <p class="post__rank">Moderator</p>
-        <dl class="post__facts">
-          <div><dt>Joined</dt><dd>Aug 2012</dd></div>
-          <div><dt>Posts</dt><dd>6,215</dd></div>
-          <div><dt>Based in</dt><dd>Chandigarh</dd></div>
-          <div><dt>Rides</dt><dd>Thar LX 4x4</dd></div>
-        </dl>
-      </div>
-    </div>
-
-    <div class="post__body">
-      <div class="post__bar">
-        <span>18 April 2026 at 3:20 PM</span>
-        <a class="post__no" href="#post-3">#3</a>
-      </div>
-
-      <div class="post__text">
-        
-
-        <p>Adding one thing Tenzin is too polite to say: first week of June is early. It is a fine week to ride if the season opened on time, and a wasted week if it did not.</p><p>Keep the plan, but check the road status thread the day before you leave and be ready to flip the direction and come in through Shimla instead. That side opens earlier and the altitude gain is gentler, which your friend will thank you for.</p>
-
-        
-      </div>
-
-      
-        <p class="post__sign">If the map shows a shortcut, ask a local first.</p>
-      
-
-      <div class="post__acts">
-        <button class="btn btn--quiet" type="button">Like (37)</button>
-        <button class="btn btn--quiet" type="button" data-quote="Arjun Sethi">Quote</button>
-        <a class="btn btn--quiet" href="#post-3">Share</a>
-        <span class="spacer"></span>
-        <a class="btn btn--quiet" href="#report">Report</a>
-      </div>
-    </div>
-  </article>
-
-  <article class="post" id="post-4">
-    <div class="post__who">
-      <a href="profile.html">
-<span class="avatar tone-5 avatar--lg" aria-hidden="true">S</span>
-</a>
-      <div>
-        <a class="post__name" href="profile.html">Sam Fernandes</a>
-        <p class="post__rank">Member</p>
-        <dl class="post__facts">
-          <div><dt>Joined</dt><dd>Nov 2023</dd></div>
-          <div><dt>Posts</dt><dd>318</dd></div>
-          <div><dt>Based in</dt><dd>Panjim</dd></div>
-          <div><dt>Rides</dt><dd>Interceptor 650</dd></div>
-        </dl>
-      </div>
-    </div>
-
-    <div class="post__body">
-      <div class="post__bar">
-        <span>19 April 2026 at 8:02 AM</span>
-        <a class="post__no" href="#post-4">#4</a>
-      </div>
-
-      <div class="post__text">
-        
-
-        <p>Did this exact route last June on an Interceptor, which is the wrong bike for it, so take the following as a warning rather than advice.</p><p>The crossings are not the problem. The problem is the hour after, when everything on the bike is wet and you are still at 4,000 metres losing light. Dry socks in a sealed bag, and stop earlier than you think you need to.</p>
-
-        
-          <figure class="figure">
-            <div class="figure__frame">Photo: bikes parked at a water crossing near Batal</div>
-            <figcaption>Batal, 11 June 2025, about two hours later than we planned.</figcaption>
-          </figure>
-        
-      </div>
-
-      
-
-      <div class="post__acts">
-        <button class="btn btn--quiet" type="button">Like (12)</button>
-        <button class="btn btn--quiet" type="button" data-quote="Sam Fernandes">Quote</button>
-        <a class="btn btn--quiet" href="#post-4">Share</a>
-        <span class="spacer"></span>
-        <a class="btn btn--quiet" href="#report">Report</a>
-      </div>
-    </div>
-  </article>
-
-
-
-<nav class="pager" aria-label="Pagination">
-  
-  
-    
-      <span aria-current="page">1</span>
-    
-  
-    
-      <a href="{% url 'thread' %}">2</a>
-    
-  
-    
-      <a href="{% url 'thread' %}">3</a>
-    
-  
-    
-      <a href="{% url 'thread' %}">4</a>
-    
-  
-    
-      <a href="{% url 'thread' %}">5</a>
-    
-  
-  <a href="{% url 'thread' %}" rel="next">Next</a>
-</nav>
-
+{% include "partials/pager.html" %}
 
 <section class="block" id="reply">
   <div class="block__bar block__bar--plain"><h2>Write a reply</h2></div>
   <div class="block__body">
-    <form method="post" action="#">
-      <input type="hidden" name="csrfmiddlewaretoken" value="xu5g1j43aIyDCUcmiFOnO3tJHbKmkxAEw9GdmZkjbKwEHgNBMwQgt69ug1r16921">
-      <div class="editor">
-        <div class="editor__tools" role="toolbar" aria-label="Formatting">
-          <button type="button" title="Bold"><strong>B</strong></button>
-          <button type="button" title="Italic"><em>I</em></button>
-          <button type="button" title="Link">Link</button>
-          <button type="button" title="Quote">Quote</button>
-          <button type="button" title="Insert photo">Photo</button>
-          <button type="button" title="Insert map">Map</button>
+    {% if thread.is_closed %}
+      <p>This thread is closed, so it can't take new replies.</p>
+    {% elif not user.is_authenticated %}
+      <p><a href="{% url 'login' %}?next={{ request.get_full_path|urlencode }}">Log in</a> or
+         <a href="{% url 'register' %}">join the forum</a> to reply.</p>
+    {% else %}
+      {# POST to this same page: ThreadView.post() saves the reply. #}
+      <form method="post" action="{{ request.get_full_path }}">
+        {% csrf_token %}
+        {% include "partials/editor.html" with field=form.body hide_label=True %}
+        <div class="pagehead__side" style="margin-top:1rem">
+          <button class="btn btn--go" type="submit">Post reply</button>
         </div>
-        <label class="only-screenreader" for="reply-body">Your reply</label>
-        <textarea class="control" id="reply-body" name="body" placeholder="Add what you know: road condition, fuel stops, where you stayed, what it cost."></textarea>
-      </div>
-      <div class="pagehead__side" style="margin-top:1rem;align-items:center">
-        <button class="btn btn--go" type="submit">Post reply</button>
-        <button class="btn" type="button">Preview</button>
-        <label class="checkline" style="margin-left:auto">
-          <input type="checkbox" name="watch" checked> Email me about new replies
-        </label>
-      </div>
-    </form>
+      </form>
+    {% endif %}
   </div>
 </section>
 {% endblock %}

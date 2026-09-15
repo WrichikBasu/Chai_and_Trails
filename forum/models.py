@@ -6,6 +6,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.urls import reverse
 from django.utils import timezone
 
 # How long a forum's milestone marker stays lit after its latest post. A stand-in
@@ -40,6 +41,8 @@ class User(AbstractUser):
     rank = models.CharField(max_length=40, default='Member')
     location = models.CharField('based in', max_length=100, blank=True)
     rides = models.CharField(max_length=100, blank=True, help_text='Bike, car or other ride shown on posts.')
+    # Kept up to date by posting, like the forum counts, so posts can show it without counting.
+    post_count = models.PositiveIntegerField(default=0, editable=False)
 
     class Meta(AbstractUser.Meta):
         constraints = [
@@ -148,6 +151,13 @@ class Thread(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def get_absolute_url(self) -> str:
+        return reverse('thread', args=[self.pk])
+
+    def latest_post_url(self, post: Post) -> str:
+        """Where a just-written post appears: the thread's last page, scrolled to the post."""
+        return f'{self.get_absolute_url()}?page=last#post-{post.pk}'
 
 
 class Post(models.Model):

@@ -7,6 +7,16 @@ register = template.Library()
 
 
 @register.filter
+def compact_count(value: int) -> str:
+    """Counts as the thread list shows them: 940, 1.4K, 94K, 1.9M."""
+    for limit, suffix in [(1_000_000, 'M'), (1_000, 'K')]:
+        if value >= limit:
+            shown = f'{value / limit:.1f}' if value < limit * 10 else f'{value // limit}'
+            return f'{shown.removesuffix(".0")}{suffix}'
+    return str(value)
+
+
+@register.filter
 def forum_time(value: datetime) -> str:
     """Forum-style time: "22 minutes ago", "Yesterday at 9:14 PM", "Tuesday at 7:02 AM", "3 Mar 2026"."""
     now = timezone.localtime()

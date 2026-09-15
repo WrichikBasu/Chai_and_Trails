@@ -2,22 +2,7 @@
 
 {% block title %}Start a thread | Chai &amp; Trails{% endblock %}
 
-{% block crumbs %}
-<div class="crumbs">
-  <div class="shell">
-    <nav aria-label="Breadcrumb">
-      <ol>
-        <li><a href="{% url 'index' %}">Forums</a></li>
-        
-          
-            <li aria-current="page">Start a thread</li>
-          
-        
-      </ol>
-    </nav>
-  </div>
-</div>
-{% endblock %}
+{% block crumbs %}{% include "partials/crumbs.html" with current="Start a thread" %}{% endblock %}
 
 {% block content %}
 <div class="pagehead">
@@ -31,78 +16,17 @@
   <section class="block">
     <div class="block__bar block__bar--plain"><h2>Your thread</h2></div>
     <div class="block__body">
-      <form method="post" action="#">
-        <input type="hidden" name="csrfmiddlewaretoken" value="BVDEmcNq1FhmcsxxW2vz71OJjhMVK8LbAAeBHS3G2HfnhO8MqTxsM4uuS7tAwKdy">
+      <form method="post" action="{% url 'new_thread' %}">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+          <ul class="errors errors--form">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% include "partials/field.html" with field=form.forum %}
+        {% include "partials/field.html" with field=form.title %}
+        {% include "partials/editor.html" with field=form.body %}
 
-        <div class="field">
-          <label for="id_forum">Post it in</label>
-          <select class="control" id="id_forum" name="forum">
-            
-              <option value="route-notes">Before you go: Route notes</option>
-            
-              <option value="permits">Before you go: Permits and paperwork</option>
-            
-              <option value="gear">Before you go: Gear and packing</option>
-            
-              <option value="budget">Before you go: Money and budgeting</option>
-            
-              <option value="trip-logs">On the road: Trip logs</option>
-            
-              <option value="company">On the road: Looking for company</option>
-            
-              <option value="treks">On the road: Treks and walks</option>
-            
-              <option value="motorcycles">The machine: Motorcycles</option>
-            
-              <option value="cars">The machine: Cars and 4x4</option>
-            
-              <option value="cameras">The machine: Cameras and drones</option>
-            
-              <option value="intro">The chai stall: Introductions</option>
-            
-              <option value="off-topic">The chai stall: Off topic</option>
-            
-              <option value="feedback">The chai stall: Site feedback</option>
-            
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="id_title">Title</label>
-          <input class="control" id="id_title" name="title" type="text" maxlength="120" placeholder="Route, month, vehicle">
-          <p class="hint">120 characters. No all-caps, no "urgent".</p>
-        </div>
-
-        <div class="field">
-          <label for="id_tag">Tag</label>
-          <select class="control" id="id_tag" name="tag">
-            <option>Trip log</option>
-            <option>Route question</option>
-            <option>Gear</option>
-            <option>Permits</option>
-            <option>Looking for company</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="id_body">Post</label>
-          <div class="editor">
-            <div class="editor__tools" role="toolbar" aria-label="Formatting">
-              <button type="button" title="Bold"><strong>B</strong></button>
-              <button type="button" title="Italic"><em>I</em></button>
-              <button type="button" title="Link">Link</button>
-              <button type="button" title="Quote">Quote</button>
-              <button type="button" title="Insert photo">Photo</button>
-              <button type="button" title="Insert map">Map</button>
-            </div>
-            <textarea class="control" id="id_body" name="body" placeholder="Dates, vehicle, budget, what you have already booked."></textarea>
-          </div>
-        </div>
-
-        <div class="pagehead__side" style="align-items:center">
+        <div class="pagehead__side">
           <button class="btn btn--go" type="submit">Post thread</button>
-          <button class="btn" type="button">Save draft</button>
-          <label class="checkline" style="margin-left:auto"><input type="checkbox" name="watch" checked> Watch this thread</label>
         </div>
       </form>
     </div>

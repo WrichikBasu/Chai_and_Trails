@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load forum_extras %}
 
 {% block content %}
 <div class="layout layout--split">
@@ -77,49 +78,21 @@
     <section class="block">
       <div class="block__bar block__bar--plain"><h2>Latest trip logs</h2></div>
       <div class="block__body">
-        <ul class="mini">
-          
-            <li>
-              
-<span class="avatar tone-3 avatar--sm" aria-hidden="true">F</span>
-
-              <span>
-                <a class="mini__title" href="{% url 'thread' %}">Six days on the Konkan coast in the rain</a>
-                <span class="mini__meta">Farida Qureshi &middot; 38 minutes ago</span>
-              </span>
-            </li>
-          
-            <li>
-              
-<span class="avatar tone-1 avatar--sm" aria-hidden="true">M</span>
-
-              <span>
-                <a class="mini__title" href="{% url 'thread' %}">Guwahati to Tawang, the long way</a>
-                <span class="mini__meta">Meera Iyer &middot; Yesterday</span>
-              </span>
-            </li>
-          
-            <li>
-              
-<span class="avatar tone-6 avatar--sm" aria-hidden="true">P</span>
-
-              <span>
-                <a class="mini__title" href="{% url 'thread' %}">Rann of Kutch on a full moon week</a>
-                <span class="mini__meta">Priyanka Rao &middot; Monday</span>
-              </span>
-            </li>
-          
-            <li>
-              
-<span class="avatar tone-1 avatar--sm" aria-hidden="true">L</span>
-
-              <span>
-                <a class="mini__title" href="{% url 'thread' %}">Sandakphu on foot, December</a>
-                <span class="mini__meta">Lhamo Sherpa &middot; 29 Aug 2026</span>
-              </span>
-            </li>
-          
-        </ul>
+        {% if trip_logs %}
+          <ul class="mini">
+            {% for thread in trip_logs %}
+              <li>
+                <span class="avatar tone-{{ thread.author.avatar_tone }} avatar--sm" aria-hidden="true">{{ thread.author.display_name|first }}</span>
+                <span>
+                  <a class="mini__title" href="{{ thread.get_absolute_url }}">{{ thread.title }}</a>
+                  <span class="mini__meta">{{ thread.author.display_name }} &middot; {{ thread.created_at|forum_time }}</span>
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No trip logs yet.</p>
+        {% endif %}
       </div>
       <div class="block__foot"><a href="{% url 'forum' 'trip-logs' %}">All trip logs</a></div>
     </section>

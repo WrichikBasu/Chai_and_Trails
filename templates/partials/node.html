@@ -27,7 +27,7 @@
       {% if post %}
         <span class="avatar tone-{{ post.author.avatar_tone }}" aria-hidden="true">{{ post.author.display_name|first }}</span>
         <span>
-          <a class="last__title" href="{% url 'thread' %}">{{ post.thread.title }}</a>
+          <a class="last__title" href="{% url 'thread' post.thread_id %}?page=last#post-{{ post.pk }}">{{ post.thread.title }}</a>
           <span class="last__meta">
             <a href="profile.html">{{ post.author.display_name }}</a> &middot; {{ post.created_at|forum_time }}
           </span>

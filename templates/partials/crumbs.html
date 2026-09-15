@@ -1,0 +1,13 @@
+<div class="crumbs">
+  <div class="shell">
+    <nav aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{% url 'index' %}">Forums</a></li>
+        {% for crumb in breadcrumbs %}
+          <li><a href="{{ crumb.url }}">{{ crumb.title }}</a></li>
+        {% endfor %}
+        <li aria-current="page">{{ current }}</li>
+      </ol>
+    </nav>
+  </div>
+</div>

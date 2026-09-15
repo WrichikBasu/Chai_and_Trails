@@ -1,9 +1,13 @@
+from typing import Any
+
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.http import HttpRequest
+from django.utils import timezone
 from django.utils.text import Truncator
 
 from .models import Category, Forum, Post, Thread, User
+from .rendering import render_body
 
 PROFILE_FIELDS: tuple[str, ...] = ('display_name', 'avatar_tone', 'rank', 'location', 'rides')
 
@@ -13,7 +17,7 @@ class UserAdmin(BaseUserAdmin):
     # Django's own fieldsets list first_name and last_name, which this model replaces.
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
-        ('Forum profile', {'fields': (*PROFILE_FIELDS, 'email')}),
+        ('Forum profile', {'fields': (*PROFILE_FIELDS, 'email', 'post_count')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
@@ -21,6 +25,7 @@ class UserAdmin(BaseUserAdmin):
     list_display = ('username', 'display_name', 'email', 'rank', 'location', 'date_joined', 'is_staff')
     list_filter = (*BaseUserAdmin.list_filter, 'rank')
     search_fields = ('username', 'display_name', 'email')
+    readonly_fields = ('post_count',)
 
 
 @admin.register(Category)
@@ -81,6 +86,8 @@ class PostAdmin(admin.ModelAdmin):
     search_fields = ('body_source', 'thread__title', 'author__username', 'author__display_name')
     date_hierarchy = 'created_at'
     fields = ('thread', 'author', 'created_at', 'edited_at', 'body_source', 'body_html')
+    # Moderators edit the Markdown; the HTML is always rebuilt from it on save.
+    readonly_fields = ('thread', 'author', 'created_at', 'edited_at', 'body_html')
 
     @admin.display(description='Post')
     def excerpt(self, post: Post) -> str:
@@ -89,6 +96,7 @@ class PostAdmin(admin.ModelAdmin):
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False  # replies are written on the site, which also updates the counts
 
-    def has_change_permission(self, request: HttpRequest, obj: Post | None = None) -> bool:
-        # View-only until posts have a renderer: editing body_source here would leave body_html stale.
-        return False
+    def save_model(self, request: HttpRequest, obj: Post, form: Any, change: bool) -> None:
+        obj.body_html = render_body(obj.body_source)
+        obj.edited_at = timezone.now()
+        super().save_model(request, obj, form, change)

@@ -49,16 +49,46 @@
     });
   });
 
-  /* Quote button: drops a quote stub into the reply box ------------------ */
+  /* Quote button: copies the post into the reply box as a Markdown quote -- */
   var replyBox = document.getElementById('reply-body');
   document.querySelectorAll('[data-quote]').forEach(function (button) {
     button.addEventListener('click', function (event) {
       if (!replyBox) { return; }
       event.preventDefault();
-      var author = button.getAttribute('data-quote');
-      replyBox.value += (replyBox.value ? '\n\n' : '') + '[QUOTE=' + author + ']\n\n[/QUOTE]\n';
+      var source = document.getElementById(button.getAttribute('data-quote-from'));
+      var lines = ['> ' + button.getAttribute('data-quote') + ' wrote:', '>'];
+      (source ? source.innerText.trim() : '').split('\n').forEach(function (line) {
+        lines.push(line ? '> ' + line : '>');
+      });
+      replyBox.value += (replyBox.value ? '\n\n' : '') + lines.join('\n') + '\n\n';
       replyBox.focus();
       replyBox.setSelectionRange(replyBox.value.length, replyBox.value.length);
+    });
+  });
+
+  /* Formatting buttons: wrap the selected text in Markdown ----------------- */
+  var FORMATS = {
+    bold: { before: '**', after: '**', example: 'bold text' },
+    italic: { before: '_', after: '_', example: 'italic text' },
+    link: { before: '[', after: '](https://)', example: 'link text' },
+    quote: { line: '> ', example: 'quoted text' },
+    list: { line: '- ', example: 'list item' }
+  };
+  document.querySelectorAll('[data-md]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var box = button.closest('.editor').querySelector('textarea');
+      var format = FORMATS[button.getAttribute('data-md')];
+      if (!box || !format) { return; }
+      var start = box.selectionStart;
+      var picked = box.value.slice(start, box.selectionEnd) || format.example;
+      var before = format.line || format.before;
+      var text = format.line
+        ? picked.split('\n').map(function (line) { return format.line + line; }).join('\n')
+        : format.before + picked + format.after;
+      box.setRangeText(text, start, box.selectionEnd, 'end');
+      box.focus();
+      // Leave the wrapped words selected, so typing replaces the example text.
+      box.setSelectionRange(start + before.length, start + text.length - (format.after || '').length);
     });
   });
 })();

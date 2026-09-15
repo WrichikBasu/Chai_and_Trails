@@ -1,0 +1,37 @@
+{% load humanize %}
+{% with author=post.author %}
+<article class="post{% if number == 1 %} post--op{% endif %}" id="post-{{ post.pk }}">
+  <div class="post__who">
+    <a href="profile.html">
+      <span class="avatar tone-{{ author.avatar_tone }} avatar--lg" aria-hidden="true">{{ author.display_name|first }}</span>
+    </a>
+    <div>
+      <a class="post__name" href="profile.html">{{ author.display_name }}</a>
+      <p class="post__rank">{{ author.rank }}</p>
+      <dl class="post__facts">
+        <div><dt>Joined</dt><dd>{{ author.date_joined|date:"M Y" }}</dd></div>
+        <div><dt>Posts</dt><dd>{{ author.post_count|intcomma }}</dd></div>
+        {% if author.location %}<div><dt>Based in</dt><dd>{{ author.location }}</dd></div>{% endif %}
+        {% if author.rides %}<div><dt>Rides</dt><dd>{{ author.rides }}</dd></div>{% endif %}
+      </dl>
+    </div>
+  </div>
+
+  <div class="post__body">
+    <div class="post__bar">
+      <span>{{ post.created_at|date:"j F Y \a\t g:i A" }}{% if post.edited_at %} &middot; edited{% endif %}</span>
+      <a class="post__no" href="#post-{{ post.pk }}">#{{ number }}</a>
+    </div>
+
+    {# body_html was rendered from Markdown and cleaned by nh3 when the post was saved, so it is safe to output as HTML. #}
+    <div class="post__text" id="post-{{ post.pk }}-text">
+      {{ post.body_html|safe }}
+    </div>
+
+    <div class="post__acts">
+      <button class="btn btn--quiet" type="button" data-quote="{{ author.display_name }}" data-quote-from="post-{{ post.pk }}-text">Quote</button>
+      <a class="btn btn--quiet" href="#post-{{ post.pk }}">Link</a>
+    </div>
+  </div>
+</article>
+{% endwith %}

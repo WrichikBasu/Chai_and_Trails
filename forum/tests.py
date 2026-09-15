@@ -11,17 +11,21 @@ from django.contrib.auth.password_validation import validate_password
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.db.models import Model
 from django.http import HttpResponse
 from django.templatetags.static import static
 from django.test import Client, SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import dateformat, timezone
 
 from .management.commands.import_forums import DATA_FILE, JsonData, JsonForum, parse_when
 from .models import Category, Forum, Post, Thread, Tone, User
-from .templatetags.forum_extras import forum_time
+from .posting import add_reply, start_thread
+from .rendering import render_body
+from .templatetags.forum_extras import compact_count, forum_time
+from .views import POSTS_PER_PAGE
 
 
 class UserModelTests(TestCase):
@@ -193,8 +197,8 @@ class ForumPageTests(TestCase):
         self.assertContains(response, '<a href="profile.html">Tenzin Norbu</a> &middot; 22 minutes ago')
         self.assertContains(response, '61,908')
 
-    def test_index_needs_three_queries(self) -> None:
-        with self.assertNumQueries(3):  # categories, their forums with latest posts, subforums
+    def test_index_needs_four_queries(self) -> None:
+        with self.assertNumQueries(4):  # categories, their forums with latest posts, subforums, trip logs
             self.client.get(reverse('index'))
 
     def test_every_forum_page_renders(self) -> None:
@@ -397,18 +401,23 @@ class StaticAssetTests(TestCase):
     def test_quote_button_script_has_no_raw_line_break_in_a_string(self) -> None:
         # Regression: the quote stub once held literal line breaks, a syntax error that stopped the whole script.
         script = Path(finders.find('js/site.js')).read_text(encoding='utf-8')
-        self.assertIn("'\\n\\n' : '') + '[QUOTE=' + author + ']\\n\\n[/QUOTE]\\n';", script)
+        self.assertIn("replyBox.value += (replyBox.value ? '\\n\\n' : '') + lines.join('\\n') + '\\n\\n';", script)
+        self.assertNotIn('[QUOTE=', script)  # quotes are Markdown now, not BBCode
 
     def test_every_page_links_the_shared_assets_instead_of_inline_code(self) -> None:
         import_forums()
+        member = Client()
+        member.force_login(User.objects.create_user('reader'))  # new-thread needs a member
         stylesheet = f'<link rel="stylesheet" href="{static("css/site.css")}">'
         script = f'<script src="{static("js/site.js")}"></script>'
+        thread = Thread.objects.first()
+        assert thread is not None
         urls: list[str] = [
-            reverse(name) for name in ['index', 'thread', 'new_thread', 'members', 'register', 'login']
-        ] + [reverse('forum', args=['route-notes'])]
+            reverse(name) for name in ['index', 'new_thread', 'members', 'register', 'login']
+        ] + [reverse('forum', args=['route-notes']), thread.get_absolute_url()]
         for url in urls:
             with self.subTest(url=url):
-                response = self.client.get(url)
+                response = (member if url == reverse('new_thread') else self.client).get(url)
                 self.assertContains(response, stylesheet, html=True)
                 self.assertContains(response, script, html=True)
                 self.assertNotContains(response, '<style>')
@@ -489,3 +498,250 @@ class LiveValidationTests(TestCase):
             browser_allows = unicodedata.category(char)[0] in 'LN' or char in '_.@+-'
             if browser_allows != bool(django_rule.match(char)):
                 self.fail(f'U+{code:04X} {char!r}: browser={browser_allows}, django={not browser_allows}')
+
+
+class RenderingTests(SimpleTestCase):
+    def test_markdown_formatting(self) -> None:
+        html = render_body('**bold**, _italic_, ~~gone~~ and `code`\n\n- one\n- two\n\n> quoted')
+        for fragment in ['<strong>bold</strong>', '<em>italic</em>', '<s>gone</s>', '<code>code</code>',
+                         '<li>one</li>', '<blockquote>']:
+            self.assertIn(fragment, html)
+
+    def test_single_line_breaks_are_kept(self) -> None:
+        self.assertIn('<br>', render_body('Line one\nline two'))
+
+    def test_headings_start_below_the_page_headings(self) -> None:
+        self.assertEqual(render_body('# Spiti').strip(), '<h3>Spiti</h3>')
+
+    def test_raw_html_is_shown_as_text(self) -> None:
+        html = render_body('<script>alert(1)</script> <b onclick="x()">hi</b>')
+        self.assertNotIn('<script', html)
+        self.assertNotIn('<b', html)
+        self.assertIn('&lt;script&gt;', html)
+
+    def test_only_safe_links_become_links(self) -> None:
+        html = render_body('[site](https://example.com) [bad](javascript:alert(1)) [data](data:text/html,x)')
+        self.assertIn('<a href="https://example.com" rel="nofollow ugc noopener noreferrer">site</a>', html)
+        self.assertNotIn('javascript:alert(1)"', html)
+        self.assertNotIn('href="data:', html)
+
+    def test_images_are_not_embedded(self) -> None:
+        self.assertNotIn('<img', render_body('![map](https://example.com/x.png)'))
+
+
+class PostingTests(TestCase):
+    member: User
+    himalaya: Forum
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera', display_name='Meera Iyer')
+        cls.himalaya = Forum.objects.get(slug='himalaya-and-ladakh')
+
+    def counts(self, slug: str) -> tuple[int, int]:
+        forum = Forum.objects.get(slug=slug)
+        return forum.thread_count, forum.post_count
+
+    def test_starting_a_thread_counts_it_here_and_in_every_parent(self) -> None:
+        before = {slug: self.counts(slug) for slug in ['himalaya-and-ladakh', 'route-notes', 'off-topic']}
+        thread = start_thread(self.himalaya, self.member, 'Spiti in June', '**Four** riding days.')
+
+        self.assertEqual(thread.posts.get().body_html, '<p><strong>Four</strong> riding days.</p>\n')
+        for slug in ['himalaya-and-ladakh', 'route-notes']:
+            threads, posts = before[slug]
+            self.assertEqual(self.counts(slug), (threads + 1, posts + 1))
+            self.assertEqual(Forum.objects.get(slug=slug).last_post, thread.last_post)
+        self.assertEqual(self.counts('off-topic'), before['off-topic'])
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.post_count, 1)
+        self.assertEqual(thread.reply_count, 0)
+
+    def test_a_reply_counts_as_a_post_but_not_a_thread(self) -> None:
+        thread = start_thread(self.himalaya, self.member, 'Spiti in June', 'Four riding days.')
+        threads, posts = self.counts('route-notes')
+        reply = add_reply(thread, self.member, 'Batal by noon.')
+
+        thread.refresh_from_db()
+        self.assertEqual((thread.reply_count, thread.last_post), (1, reply))
+        self.assertEqual(self.counts('route-notes'), (threads, posts + 1))
+        self.assertEqual(Forum.objects.get(slug='route-notes').last_post, reply)
+
+    def test_an_older_reply_never_replaces_a_newer_latest_post(self) -> None:
+        # Simulates two replies milliseconds apart whose transactions finish in the wrong order.
+        thread = start_thread(self.himalaya, self.member, 'Spiti in June', 'Four riding days.')
+        newer = thread.last_post
+        assert newer is not None
+        Thread.objects.filter(pk=thread.pk).update(last_posted_at=timezone.now() + timedelta(minutes=1))
+        Post.objects.filter(pk=newer.pk).update(created_at=timezone.now() + timedelta(minutes=1))
+
+        add_reply(thread, self.member, 'Late arrival.')
+        thread.refresh_from_db()
+        self.assertEqual(thread.last_post, newer)
+        self.assertEqual(thread.reply_count, 1)  # still counted
+        self.assertEqual(Forum.objects.get(slug='himalaya-and-ladakh').last_post, newer)
+
+
+class NewThreadViewTests(TestCase):
+    member: User
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera', display_name='Meera Iyer')
+
+    def test_visitors_are_asked_to_log_in(self) -> None:
+        url = reverse('new_thread')
+        self.assertRedirects(self.client.get(url), f'{reverse("login")}?next={url}')
+
+    def test_forum_page_link_preselects_the_forum(self) -> None:
+        self.client.force_login(self.member)
+        response = self.client.get(f'{reverse("new_thread")}?forum=himalaya-and-ladakh')
+        himalaya = Forum.objects.get(slug='himalaya-and-ladakh')
+        self.assertContains(
+            response, f'<option value="{himalaya.pk}" selected>Before you go: Route notes › Himalaya and Ladakh</option>',
+            html=True,
+        )
+
+    def test_posting_a_thread(self) -> None:
+        self.client.force_login(self.member)
+        himalaya = Forum.objects.get(slug='himalaya-and-ladakh')
+        response = self.client.post(reverse('new_thread'), {
+            'forum': himalaya.pk, 'title': 'Spiti in June', 'body': 'Four riding days, _one_ spare.',
+        })
+        thread = Thread.objects.get(title='Spiti in June')
+        self.assertRedirects(response, thread.get_absolute_url())
+        self.assertEqual((thread.forum, thread.author), (himalaya, self.member))
+        self.assertContains(self.client.get(thread.get_absolute_url()), 'Four riding days, <em>one</em> spare.')
+
+    def test_submitting_skips_the_forum_menu_and_initial_lookup(self) -> None:
+        self.client.force_login(self.member)
+        himalaya = Forum.objects.get(slug='himalaya-and-ladakh')
+        with CaptureQueriesContext(connection) as queries:
+            self.client.post(reverse('new_thread'), {'forum': himalaya.pk, 'title': 'Spiti', 'body': 'Four days.'})
+        sql = [q['sql'] for q in queries.captured_queries]
+        self.assertFalse(any('forum_category' in s for s in sql), 'the menu was built for a valid submit')
+        self.assertFalse(any('"slug" = \'\'' in s for s in sql), 'looked up an empty ?forum= slug')
+
+    def test_showing_the_form_builds_the_menu_once(self) -> None:
+        self.client.force_login(self.member)
+        for url in [reverse('new_thread'), f'{reverse("new_thread")}?forum=himalaya-and-ladakh']:
+            with self.subTest(url=url), CaptureQueriesContext(connection) as queries:
+                response = self.client.get(url)
+            self.assertEqual(sum('forum_category' in q['sql'] for q in queries.captured_queries), 1)
+            self.assertContains(response, '<option value="" selected>Choose a section</option>' if '?' not in url
+                                else '>Before you go: Route notes › Himalaya and Ladakh</option>')
+
+    def test_missing_fields_are_reported(self) -> None:
+        self.client.force_login(self.member)
+        response = self.client.post(reverse('new_thread'), {'forum': '', 'title': '', 'body': ''})
+        self.assertContains(response, 'This field is required.', count=3)
+        self.assertFalse(Thread.objects.filter(author=self.member).exists())
+
+
+class ThreadViewTests(TestCase):
+    member: User
+    thread: Thread
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera', display_name='Meera Iyer')
+        cls.thread = start_thread(Forum.objects.get(slug='himalaya-and-ladakh'), cls.member, 'Spiti in June', 'Four riding days.')
+
+    def reply(self, body: str = 'Batal by *noon*.') -> HttpResponse:
+        return self.client.post(self.thread.get_absolute_url(), {'body': body})
+
+    def test_reply_shows_up_as_the_forums_latest_post_on_the_index(self) -> None:
+        # Step 8's "done when": the reply raises the reply count and leads the index.
+        self.client.force_login(self.member)
+        response = self.reply()
+        reply = Post.objects.latest('created_at')
+        self.assertRedirects(response, self.thread.latest_post_url(reply), fetch_redirect_response=False)
+
+        self.thread.refresh_from_db()
+        self.assertEqual(self.thread.reply_count, 1)
+        index = self.client.get(reverse('index'))
+        latest = f'{self.thread.get_absolute_url()}?page=last#post-{reply.pk}'
+        self.assertContains(index, f'<a class="last__title" href="{latest}">Spiti in June</a>', html=True)
+
+    def test_thread_page_shows_the_rendered_posts(self) -> None:
+        self.client.force_login(self.member)
+        self.reply()
+        response = self.client.get(self.thread.get_absolute_url())
+        self.assertContains(response, '<h1>Spiti in June</h1>', html=True)
+        self.assertContains(response, 'Batal by <em>noon</em>.')
+        self.assertContains(response, '<a class="post__no" href="#post-', count=2)
+
+    def test_visitors_see_a_login_link_and_cannot_post(self) -> None:
+        self.assertContains(self.client.get(self.thread.get_absolute_url()), 'to reply.')
+        self.assertRedirects(self.reply(), f'{reverse("login")}?next={self.thread.get_absolute_url()}',
+                             fetch_redirect_response=False)
+        self.assertEqual(self.thread.posts.count(), 1)
+
+    def test_empty_reply_is_refused_and_text_kept(self) -> None:
+        self.client.force_login(self.member)
+        response = self.reply('   ')
+        self.assertContains(response, 'This field is required.')
+        self.assertEqual(self.thread.posts.count(), 1)
+
+    def test_closed_thread_takes_no_replies(self) -> None:
+        Thread.objects.filter(pk=self.thread.pk).update(is_closed=True)
+        self.client.force_login(self.member)
+        self.assertContains(self.client.get(self.thread.get_absolute_url()), "This thread is closed")
+        self.assertEqual(self.reply().status_code, 403)
+        self.assertEqual(self.thread.posts.count(), 1)
+
+    def test_posts_are_paginated_and_last_page_is_reachable(self) -> None:
+        for n in range(POSTS_PER_PAGE):  # 1 opening post + 20 replies = 2 pages
+            add_reply(self.thread, self.member, f'Reply {n}')
+        last = self.client.get(f'{self.thread.get_absolute_url()}?page=last')
+        self.assertContains(last, 'Reply 19')
+        self.assertNotContains(last, 'Four riding days.')
+        self.assertContains(last, f'<a class="post__no" href="#post-{Post.objects.latest("created_at").pk}">#21</a>', html=True)
+        self.assertContains(self.client.get(self.thread.get_absolute_url()), '<a href="?page=2">2</a>', html=True)
+
+    def test_views_are_counted(self) -> None:
+        self.client.get(self.thread.get_absolute_url())
+        self.client.get(self.thread.get_absolute_url())
+        self.thread.refresh_from_db()
+        self.assertEqual(self.thread.view_count, 2)
+
+    def test_unknown_thread_is_404(self) -> None:
+        self.assertEqual(self.client.get(reverse('thread', args=[999_999])).status_code, 404)
+
+
+class ForumThreadListTests(TestCase):
+    def test_forum_lists_its_real_threads_pinned_first(self) -> None:
+        import_forums()
+        member = User.objects.create_user('meera')
+        himalaya = Forum.objects.get(slug='himalaya-and-ladakh')
+        start_thread(himalaya, member, 'Newest chatter', 'Hi.')
+        rules = start_thread(himalaya, member, 'Read before posting', 'Rules.')
+        Thread.objects.filter(pk=rules.pk).update(is_pinned=True, last_posted_at=timezone.now() - timedelta(days=30))
+
+        html = self.client.get(reverse('forum', args=['himalaya-and-ladakh'])).content.decode()
+        self.assertLess(html.index('Read before posting'), html.index('Newest chatter'))
+        self.assertIn('<span class="chip chip--pinned">Pinned</span>', html)
+        self.assertIn(f'href="{reverse("new_thread")}?forum=himalaya-and-ladakh"', html)
+
+    def test_empty_forum_invites_the_first_thread(self) -> None:
+        import_forums()
+        Forum.objects.create(parent=Forum.objects.get(slug='on-foot'), slug='sikkim', title='Sikkim', description='.')
+        self.assertContains(self.client.get(reverse('forum', args=['sikkim'])), 'No threads here yet.')
+
+    def test_compact_counts(self) -> None:
+        self.assertEqual([compact_count(n) for n in [940, 1_400, 94_000, 1_900_000]], ['940', '1.4K', '94K', '1.9M'])
+
+
+class PostAdminEditTests(TestCase):
+    def test_editing_a_post_in_admin_re_renders_it(self) -> None:
+        import_forums()
+        staff = User.objects.create_superuser('boss', 'boss@example.com', 'x')
+        post = Post.objects.first()
+        assert post is not None
+        self.client.force_login(staff)
+        self.client.post(reverse('admin:forum_post_change', args=[post.pk]), {'body_source': 'Now **bold**.'})
+        post.refresh_from_db()
+        self.assertEqual(post.body_html, '<p>Now <strong>bold</strong>.</p>\n')
+        self.assertIsNotNone(post.edited_at)

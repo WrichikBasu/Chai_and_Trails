@@ -7,9 +7,9 @@ from .forms import LoginForm
 
 urlpatterns: list[URLPattern] = [
     path('', views.index, name='index'),
-    path('forum/<slug:slug>/', views.forum, name='forum'),
-    path('thread/', TemplateView.as_view(template_name='thread.html'), name='thread'),
-    path('new-thread/', TemplateView.as_view(template_name='new-thread.html'), name='new_thread'),
+    path('forum/<slug:slug>/', views.ForumView.as_view(), name='forum'),
+    path('thread/<int:pk>/', views.ThreadView.as_view(), name='thread'),
+    path('new-thread/', views.NewThreadView.as_view(), name='new_thread'),
     path('members/', TemplateView.as_view(template_name='members.html'), name='members'),
     path('register/', views.register, name='register'),
     path(
