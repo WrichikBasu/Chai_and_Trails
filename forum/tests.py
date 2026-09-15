@@ -1,4 +1,6 @@
 import json
+import re
+import unicodedata
 from datetime import timedelta
 from io import StringIO
 from pathlib import Path
@@ -152,7 +154,8 @@ class ImportForumsTests(TestCase):
         self.assertEqual((yesterday.date(), yesterday.hour, yesterday.minute), (now.date() - timedelta(days=1), 21, 14))
         tuesday = parse_when('Tuesday at 7:02 AM', now)
         self.assertEqual(tuesday.strftime('%A %H:%M'), 'Tuesday 07:02')
-        self.assertTrue(timedelta(0) < now - tuesday <= timedelta(days=7))
+        # A weekday is always in the past week; on a Tuesday it means last Tuesday, up to 8 days back.
+        self.assertTrue(timedelta(0) < now - tuesday < timedelta(days=8))
 
 
 class ForumTimeTests(SimpleTestCase):
@@ -422,3 +425,67 @@ class StaticAssetTests(TestCase):
                 self.assertIn(theme, html)
                 self.assertLess(html.index(theme), html.index('rel="stylesheet"'))
                 self.assertLess(html.index(theme), html.index('</head>'))
+
+
+class InjectionTests(TestCase):
+    """The browser's live checks can be switched off, so the server must hold on its own."""
+
+    ATTACKS: list[str] = [
+        '<script>alert(1)</script>',
+        '<img src=x onerror=alert(1)>',
+        "x'); DROP TABLE forum_user;--",
+        "' OR '1'='1",
+        'admin"--',
+    ]
+
+    def register(self, username: str, display_name: str = '') -> HttpResponse:
+        return self.client.post(reverse('register'), {
+            'username': username, 'display_name': display_name, 'email': 'probe@example.com',
+            'password1': 'konkan-coast-26', 'password2': 'konkan-coast-26', 'terms': 'on',
+        })
+
+    def test_injection_usernames_are_refused_by_the_server(self) -> None:
+        for attack in self.ATTACKS:
+            with self.subTest(username=attack):
+                response = self.register(attack)
+                self.assertContains(response, 'Enter a valid username.')
+                self.assertFalse(User.objects.filter(username=attack).exists())
+        self.assertEqual(User.objects.count(), 0)  # the table is still there, and still queryable
+
+    def test_sql_injection_in_login_does_not_log_in(self) -> None:
+        User.objects.create_user('tenzin', 'tenzin@example.com', 'high-passes-26')
+        for attack in ["' OR '1'='1", "tenzin' --", "tenzin'; --"]:
+            with self.subTest(username=attack):
+                response = self.client.post(reverse('login'), {'username': attack, 'password': "' OR '1'='1"})
+                self.assertContains(response, 'Please enter a correct username and password.')
+                self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_script_in_display_name_is_shown_as_text(self) -> None:
+        # Display names may contain any character, so escaping on output is what protects pages.
+        self.assertRedirects(self.register('safe-name', '<script>alert("hi")</script>'), reverse('index'))
+        html = self.client.get(reverse('index')).content.decode()
+        self.assertIn('&lt;script&gt;alert(&quot;hi&quot;)&lt;/script&gt;', html)
+        self.assertNotIn('<script>alert("hi")</script>', html)
+
+
+class LiveValidationTests(TestCase):
+    def test_register_page_loads_the_live_checks(self) -> None:
+        response = self.client.get(reverse('register'))
+        self.assertContains(response, 'data-live-validate')
+        self.assertContains(response, f'<script src="{static("js/register.js")}"></script>', html=True)
+
+    def test_other_pages_do_not_load_them(self) -> None:
+        self.assertNotContains(self.client.get(reverse('login')), 'js/register.js')
+
+    def test_browser_username_rule_matches_the_servers(self) -> None:
+        # register.js allows /[\p{L}\p{N}_.@+-]/u per character; Django allows [\w.@+-]. Same set.
+        script = Path(finders.find('js/register.js')).read_text(encoding='utf-8')
+        self.assertIn(r'var USERNAME_CHAR = /^[\p{L}\p{N}_.@+-]$/u;', script)
+        django_rule = re.compile(r'^[\w.@+-]+\Z')
+        for code in range(0x110000):
+            if 0xD800 <= code <= 0xDFFF:
+                continue
+            char = chr(code)
+            browser_allows = unicodedata.category(char)[0] in 'LN' or char in '_.@+-'
+            if browser_allows != bool(django_rule.match(char)):
+                self.fail(f'U+{code:04X} {char!r}: browser={browser_allows}, django={not browser_allows}')

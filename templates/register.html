@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Join the forum | Chai &amp; Trails{% endblock %}
 
@@ -10,7 +11,7 @@
   <p class="formcard__note">Free, and takes a minute. You need an account to post and to see attachments in full size.</p>
 
   {# POST sends the fields in the request body, never in the URL. #}
-  <form method="post" action="{% url 'register' %}">
+  <form method="post" action="{% url 'register' %}" data-live-validate>
     {% csrf_token %}
     {% if form.non_field_errors %}
       <ul class="errors errors--form">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>
@@ -37,4 +38,9 @@
 
   <p class="formcard__alt">Already a member? <a href="{% url 'login' %}">Log in</a></p>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{# Checks the username and email as they're typed; the server still checks everything on submit. #}
+<script src="{% static 'js/register.js' %}"></script>
 {% endblock %}
