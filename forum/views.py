@@ -6,7 +6,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied
 from django.db.models import F, Prefetch, Q, QuerySet
-from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
@@ -103,6 +103,11 @@ class ThreadView(ElidedPagesMixin, ListView):
         return self.thread.posts.select_related('author')
 
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        # A missing or outdated slug (no slug given, a typo, a renamed thread) gets a permanent
+        # redirect to the one proper address. The query string comes along; browsers keep #post-….
+        if kwargs.get('slug') != self.thread.slug:
+            query = request.GET.urlencode()
+            return HttpResponsePermanentRedirect(self.thread.get_absolute_url() + (f'?{query}' if query else ''))
         Thread.objects.filter(pk=self.thread.pk).update(view_count=F('view_count') + 1)
         return super().get(request, *args, **kwargs)
 

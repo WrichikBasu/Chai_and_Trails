@@ -8,7 +8,9 @@ from .forms import LoginForm
 urlpatterns: list[URLPattern] = [
     path('', views.index, name='index'),
     path('forum/<slug:slug>/', views.ForumView.as_view(), name='forum'),
-    path('thread/<int:pk>/', views.ThreadView.as_view(), name='thread'),
+    path('thread/<int:pk>/<slug:slug>/', views.ThreadView.as_view(), name='thread'),
+    # Links without the slug still work: the view redirects them to the full address.
+    path('thread/<int:pk>/', views.ThreadView.as_view(), name='thread_by_id'),
     path('new-thread/', views.NewThreadView.as_view(), name='new_thread'),
     path('members/', TemplateView.as_view(template_name='members.html'), name='members'),
     path('register/', views.register, name='register'),

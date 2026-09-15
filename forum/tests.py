@@ -21,7 +21,7 @@ from django.urls import reverse
 from django.utils import dateformat, timezone
 
 from .management.commands.import_forums import DATA_FILE, JsonData, JsonForum, parse_when
-from .models import Category, Forum, Post, Thread, Tone, User
+from .models import SLUG_MAX_LENGTH, Category, Forum, Post, Thread, Tone, User, transliterated_slug
 from .posting import add_reply, start_thread
 from .rendering import render_body
 from .templatetags.forum_extras import compact_count, forum_time
@@ -708,7 +708,7 @@ class ThreadViewTests(TestCase):
         self.assertEqual(self.thread.view_count, 2)
 
     def test_unknown_thread_is_404(self) -> None:
-        self.assertEqual(self.client.get(reverse('thread', args=[999_999])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('thread_by_id', args=[999_999])).status_code, 404)
 
 
 class ForumThreadListTests(TestCase):
@@ -745,3 +745,61 @@ class PostAdminEditTests(TestCase):
         post.refresh_from_db()
         self.assertEqual(post.body_html, '<p>Now <strong>bold</strong>.</p>\n')
         self.assertIsNotNone(post.edited_at)
+
+
+class ThreadSlugTests(TestCase):
+    member: User
+    thread: Thread
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera')
+        cls.thread = start_thread(Forum.objects.get(slug='himalaya-and-ladakh'), cls.member, 'Spiti in June', 'Four days.')
+
+    def test_titles_in_any_script_become_ascii_slugs(self) -> None:
+        cases: dict[str, str] = {
+            'Manali to Kaza, first week of June': 'manali-to-kaza-first-week-of-june',
+            'मनाली से काज़ा, जून में': 'mnali-se-kaja-jun-mem',
+            'দার্জিলিং থেকে সান্দাকফু': 'darjilim-theke-sandakphu',
+            'Manali से Kaza 2026': 'manali-se-kaza-2026',
+            '🏍️ Spiti on a 350': 'spiti-on-a-350',
+            '🏍️🏔️!!': 'thread',
+        }
+        for title, slug in cases.items():
+            with self.subTest(title=title):
+                self.assertEqual(transliterated_slug(title), slug)
+
+    def test_long_titles_are_cut_at_a_word(self) -> None:
+        slug = transliterated_slug('Sach Pass in a stock hatchback: talk me out of it, please, before the monsoon')
+        self.assertEqual(slug, 'sach-pass-in-a-stock-hatchback-talk-me-out-of-it-please')
+        self.assertLessEqual(len(transliterated_slug('x' * 200)), SLUG_MAX_LENGTH)
+
+    def test_thread_url_carries_the_slug(self) -> None:
+        self.assertEqual(self.thread.get_absolute_url(), f'/thread/{self.thread.pk}/spiti-in-june/')
+        self.assertEqual(self.client.get(self.thread.get_absolute_url()).status_code, 200)
+
+    def test_missing_or_wrong_slug_redirects_permanently(self) -> None:
+        canonical = self.thread.get_absolute_url()
+        for url in [f'/thread/{self.thread.pk}/', f'/thread/{self.thread.pk}/old-title/']:
+            with self.subTest(url=url):
+                self.assertRedirects(self.client.get(url), canonical, status_code=301)
+        self.assertRedirects(self.client.get(f'/thread/{self.thread.pk}/x/?page=last'), f'{canonical}?page=last',
+                             status_code=301, fetch_redirect_response=False)
+
+    def test_redirects_do_not_count_as_views(self) -> None:
+        self.client.get(f'/thread/{self.thread.pk}/')
+        self.thread.refresh_from_db()
+        self.assertEqual(self.thread.view_count, 0)
+
+    def test_renamed_thread_keeps_old_links_working(self) -> None:
+        old_url = self.thread.get_absolute_url()
+        Thread.objects.filter(pk=self.thread.pk).update(title='Spiti in July')
+        self.assertRedirects(self.client.get(old_url), f'/thread/{self.thread.pk}/spiti-in-july/', status_code=301)
+
+    def test_reply_to_an_outdated_url_is_still_saved(self) -> None:
+        # A POST is never redirected: that would lose the reply's text.
+        self.client.force_login(self.member)
+        response = self.client.post(f'/thread/{self.thread.pk}/old-title/', {'body': 'Batal by noon.'})
+        self.assertEqual(self.thread.posts.count(), 2)
+        self.assertTrue(response['Location'].startswith(self.thread.get_absolute_url()))

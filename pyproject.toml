@@ -3,6 +3,7 @@ name = "chai-and-trails"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
+    "anyascii>=0.3.3",
     "django[argon2]>=6.1.1",
     "markdown-it-py>=4.2.0",
     "nh3>=0.3.7",

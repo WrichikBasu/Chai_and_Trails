@@ -1,17 +1,38 @@
 import random
+import unicodedata
 from datetime import timedelta
 from typing import Any, Final
 
+from anyascii import anyascii
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.text import slugify
 
 # How long a forum's milestone marker stays lit after its latest post. A stand-in
 # until per-member unread tracking exists.
 FRESH_WINDOW: Final[timedelta] = timedelta(hours=3)
+
+SLUG_MAX_LENGTH: Final[int] = 60
+SLUG_FALLBACK: Final[str] = 'thread'
+
+
+def transliterated_slug(title: str) -> str:
+    """An ASCII slug for any title, in any script: "मनाली से काज़ा" -> "mnali-se-kaja".
+
+    anyascii writes each character in Latin letters. Symbols such as emoji are
+    dropped first, so "🏍️ Spiti" gives "spiti" rather than "motorcycle-spiti".
+    Long slugs are cut at a word boundary, and a title with nothing usable
+    gives "thread".
+    """
+    words = ''.join(' ' if unicodedata.category(ch).startswith('S') else ch for ch in title)
+    slug = slugify(anyascii(words))
+    if len(slug) > SLUG_MAX_LENGTH:
+        slug = slug[:SLUG_MAX_LENGTH + 1].rsplit('-', 1)[0] if '-' in slug[:SLUG_MAX_LENGTH] else slug[:SLUG_MAX_LENGTH]
+    return slug.strip('-_') or SLUG_FALLBACK
 
 
 class Tone(models.IntegerChoices):
@@ -152,8 +173,14 @@ class Thread(models.Model):
     def __str__(self) -> str:
         return self.title
 
+    @property
+    def slug(self) -> str:
+        # Worked out from the current title, never stored: the id finds the thread, and the
+        # view redirects any outdated slug, so a renamed thread's old links keep working.
+        return transliterated_slug(self.title)
+
     def get_absolute_url(self) -> str:
-        return reverse('thread', args=[self.pk])
+        return reverse('thread', args=[self.pk, self.slug])
 
     def latest_post_url(self, post: Post) -> str:
         """Where a just-written post appears: the thread's last page, scrolled to the post."""
