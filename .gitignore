@@ -330,3 +330,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 
+
+# The editor build (frontend/editor): dependencies are installed, not committed.
+node_modules/

@@ -210,14 +210,22 @@ class Post(models.Model):
 
 
 class Attachment(models.Model):
+    """A photo on a post. All three files were cleaned by forum.photos: no EXIF or GPS."""
+
     # Empty while the member is still writing, so photos can upload before the post exists.
     post = models.ForeignKey(Post, null=True, blank=True, on_delete=models.CASCADE, related_name='attachments')
     uploader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='attachments')
     file = models.ImageField(upload_to='attachments/%Y/%m/', width_field='width', height_field='height')
+    # Smaller copies for pages; empty when the photo is already narrower than that width.
+    thumbnail_800 = models.ImageField(upload_to='attachments/%Y/%m/', blank=True, editable=False)
+    thumbnail_1600 = models.ImageField(upload_to='attachments/%Y/%m/', blank=True, editable=False)
     width = models.PositiveIntegerField(null=True, editable=False)
     height = models.PositiveIntegerField(null=True, editable=False)
-    size = models.PositiveIntegerField(editable=False)  # bytes
+    size = models.PositiveIntegerField(editable=False)  # bytes, of the full-size file
     created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['created_at', 'id']
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         self.size = self.file.size
@@ -225,3 +233,20 @@ class Attachment(models.Model):
 
     def __str__(self) -> str:
         return self.file.name
+
+    @property
+    def preview_url(self) -> str:
+        """A small copy for lists such as the admin: 800 px wide, or the photo itself if smaller."""
+        return (self.thumbnail_800 or self.file).url
+
+    @property
+    def display_url(self) -> str:
+        """The copy a post shows by default: 1600 px wide, or the photo itself if smaller."""
+        return (self.thumbnail_1600 or self.file).url
+
+    @property
+    def srcset(self) -> str:
+        """Lets the browser fetch the 1600 px copy on high-density screens."""
+        sizes = [(copy, width) for copy, width in [(self.thumbnail_800, 800), (self.thumbnail_1600, 1600)] if copy]
+        sizes.append((self.file, self.width or 0))
+        return ', '.join(f'{copy.url} {width}w' for copy, width in sizes)
