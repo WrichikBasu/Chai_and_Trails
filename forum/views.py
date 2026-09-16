@@ -4,21 +4,26 @@ from typing import Any, Final, TypedDict, cast
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import F, Prefetch, Q, QuerySet
-from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
-from django.views.generic import CreateView, ListView
+from django.views.generic import CreateView, ListView, View
 
-from .forms import NewThreadForm, RegistrationForm, ReplyForm
-from .models import Category, Forum, Post, Thread, User
-from .posting import add_reply, start_thread
+from .forms import MAX_PHOTOS, NewThreadForm, RegistrationForm, ReplyForm
+from .models import Attachment, Category, Forum, Post, Thread, User
+from .photos import MAX_UPLOAD_BYTES, prepare_photo
+from .posting import add_reply, discard_photo, save_photo, start_thread, waiting_photos
+from .rendering import photo_markdown, render_body
 
 THREADS_PER_PAGE: Final[int] = 20
 POSTS_PER_PAGE: Final[int] = 20
 LATEST_TRIP_LOGS: Final[int] = 4
+# Photos a member has uploaded that no post has claimed yet. Enough for a long trip report
+# in progress, few enough that the upload endpoint can't be used as free file hosting.
+MAX_WAITING_PHOTOS: Final[int] = 30
 
 
 class Crumb(TypedDict):
@@ -63,6 +68,25 @@ class ElidedPagesMixin:
         return context
 
 
+class PhotoEditorMixin:
+    """What the visual editor needs: the member's photo tray, and after a failed submit,
+    the post they were writing, rendered back to HTML for the editor to reopen."""
+
+    request: HttpRequest
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context: dict[str, Any] = super().get_context_data(**kwargs)  # type: ignore[misc]
+        if not self.request.user.is_authenticated:
+            return context
+        photos = waiting_photos(cast(User, self.request.user))
+        context['waiting_photos'] = photos
+        context.update(max_photos=MAX_PHOTOS, max_upload_mb=MAX_UPLOAD_BYTES // (1024 * 1024))
+        form = context.get('form')
+        if form is not None and form.is_bound:
+            context['editor_html'] = render_body(form.data.get('body', ''), {photo.pk: photo for photo in photos})
+        return context
+
+
 class ForumView(ElidedPagesMixin, ListView):
     """A forum's subforums and a page of its threads, pinned first, then by latest activity."""
 
@@ -88,7 +112,7 @@ class ForumView(ElidedPagesMixin, ListView):
         return context
 
 
-class ThreadView(ElidedPagesMixin, ListView):
+class ThreadView(PhotoEditorMixin, ElidedPagesMixin, ListView):
     """A page of a thread's posts, with the reply form. GET reads; POST replies."""
 
     template_name = 'thread.html'
@@ -100,7 +124,7 @@ class ThreadView(ElidedPagesMixin, ListView):
         return get_object_or_404(Thread.objects.select_related('forum', 'author'), pk=self.kwargs['pk'])
 
     def get_queryset(self) -> QuerySet[Post]:
-        return self.thread.posts.select_related('author')
+        return self.thread.posts.select_related('author')  # photos are already in each post's body_html
 
     def get(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         # A missing or outdated slug (no slug given, a typo, a renamed thread) gets a permanent
@@ -117,9 +141,10 @@ class ThreadView(ElidedPagesMixin, ListView):
         if self.thread.is_closed:
             raise PermissionDenied('This thread is closed to new replies.')
 
-        form = ReplyForm(request.POST)
+        form = ReplyForm(request.POST, request.FILES)  # the text from the body; photos from the upload parts
         if form.is_valid():
-            post = add_reply(self.thread, cast(User, request.user), form.cleaned_data['body'])
+            data = form.cleaned_data
+            post = add_reply(self.thread, cast(User, request.user), data['body'], data['photos'])
             return redirect(self.thread.latest_post_url(post))
         # Show the page again with the errors, and what they typed still in the box.
         self.object_list = self.get_queryset()
@@ -132,7 +157,7 @@ class ThreadView(ElidedPagesMixin, ListView):
         return context
 
 
-class NewThreadView(LoginRequiredMixin, CreateView):
+class NewThreadView(LoginRequiredMixin, PhotoEditorMixin, CreateView):
     """Start a thread: its title and section, and the opening post."""
 
     form_class = NewThreadForm
@@ -150,8 +175,56 @@ class NewThreadView(LoginRequiredMixin, CreateView):
     def form_valid(self, form: NewThreadForm) -> HttpResponseRedirect:
         # Instead of form.save(): start_thread also writes the opening post and updates the counts.
         data = form.cleaned_data
-        self.object = start_thread(data['forum'], cast(User, self.request.user), data['title'], data['body'])
+        self.object = start_thread(
+            data['forum'], cast(User, self.request.user), data['title'], data['body'], data['photos'],
+        )
         return redirect(self.object)
+
+
+class PhotoUploadView(LoginRequiredMixin, View):
+    """The editor's upload: one photo per request, cleaned and stored before its post exists.
+
+    Answers in JSON. On success the reply carries the Markdown line that places
+    the photo, which the editor puts in at the cursor.
+    """
+
+    raise_exception = True  # a visitor who isn't logged in gets 403, not a login page, since the page's script is asking
+    http_method_names = ['post']
+
+    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> JsonResponse:
+        member = cast(User, request.user)
+        upload = request.FILES.get('photo')
+        if upload is None:
+            return JsonResponse({'error': 'Choose a photo to upload.'}, status=400)
+        if Attachment.objects.filter(uploader=member, post__isnull=True).count() >= MAX_WAITING_PHOTOS:
+            return JsonResponse({'error': 'You have too many photos waiting to be posted. Post what you have first.'},
+                                status=400)
+        try:
+            photo = prepare_photo(upload)
+        except ValidationError as error:
+            return JsonResponse({'error': error.messages[0]}, status=400)
+        attachment = save_photo(member, photo)
+        return JsonResponse({
+            'id': attachment.pk,
+            'markdown': photo_markdown(attachment.pk),
+            'preview_url': attachment.preview_url,   # the tray's thumbnail
+            'display_url': attachment.display_url,   # what the editor and the post show
+            'width': attachment.width,
+            'height': attachment.height,
+            'remove_url': reverse('photo_remove', args=[attachment.pk]),
+        }, status=201)
+
+
+class PhotoRemoveView(LoginRequiredMixin, View):
+    """Remove a photo from the tray: files and all. Only the member's own, and only while no post has it."""
+
+    raise_exception = True
+    http_method_names = ['post']
+
+    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        photo = get_object_or_404(Attachment, pk=kwargs['pk'], uploader=request.user, post__isnull=True)
+        discard_photo(photo)
+        return HttpResponse(status=204)
 
 
 @require_http_methods(['GET', 'POST'])

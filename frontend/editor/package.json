@@ -1,0 +1,21 @@
+{
+  "name": "chai-and-trails-editor",
+  "private": true,
+  "description": "The visual post editor: TipTap, bundled into static/js/editor.js for Django to serve.",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.js --bundle --minify --format=iife --target=es2020 --metafile=build-meta.json \"--banner:js=/*! Chai & Trails post editor. Third-party licences: editor.js.LICENSES.txt */\" --outfile=../../static/js/editor.js && node scripts/licenses.js",
+    "test": "node --test 'test/**/*.test.js'"
+  },
+  "dependencies": {
+    "@tiptap/core": "3.31.3",
+    "@tiptap/extensions": "3.31.3",
+    "@tiptap/pm": "3.31.3",
+    "@tiptap/starter-kit": "3.31.3",
+    "prosemirror-markdown": "1.13.7"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "jsdom": "30.0.1"
+  }
+}

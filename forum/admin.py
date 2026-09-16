@@ -4,10 +4,11 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.http import HttpRequest
 from django.utils import timezone
+from django.utils.html import format_html
 from django.utils.text import Truncator
 
-from .models import Category, Forum, Post, Thread, User
-from .rendering import render_body
+from .models import Attachment, Category, Forum, Post, Thread, User
+from .posting import render_post
 
 PROFILE_FIELDS: tuple[str, ...] = ('display_name', 'avatar_tone', 'rank', 'location', 'rides')
 
@@ -97,6 +98,36 @@ class PostAdmin(admin.ModelAdmin):
         return False  # replies are written on the site, which also updates the counts
 
     def save_model(self, request: HttpRequest, obj: Post, form: Any, change: bool) -> None:
-        obj.body_html = render_body(obj.body_source)
+        obj.body_html = render_post(obj)
         obj.edited_at = timezone.now()
         super().save_model(request, obj, form, change)
+
+
+@admin.register(Attachment)
+class AttachmentAdmin(admin.ModelAdmin):
+    """View and delete photos. Uploading happens on the site, where each photo is checked and cleaned."""
+
+    list_display = ('thumbnail', 'post', 'uploader', 'dimensions', 'size_kb', 'created_at')
+    list_select_related = ('post__thread', 'uploader')
+    search_fields = ('uploader__username', 'uploader__display_name', 'post__thread__title')
+    date_hierarchy = 'created_at'
+    fields = ('thumbnail', 'file', 'post', 'uploader', 'dimensions', 'size_kb', 'created_at')
+    readonly_fields = fields
+
+    @admin.display(description='Photo')
+    def thumbnail(self, attachment: Attachment) -> str:
+        return format_html('<img src="{}" alt="" style="height:4rem;border-radius:4px">', attachment.preview_url)
+
+    @admin.display(description='Size')
+    def dimensions(self, attachment: Attachment) -> str:
+        return f'{attachment.width} × {attachment.height}'
+
+    @admin.display(description='KB', ordering='size')
+    def size_kb(self, attachment: Attachment) -> int:
+        return round(attachment.size / 1024)
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: Attachment | None = None) -> bool:
+        return False

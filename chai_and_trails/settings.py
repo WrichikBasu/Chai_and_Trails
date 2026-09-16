@@ -157,6 +157,15 @@ STATIC_URL = 'static/'
 STATICFILES_DIRS: list[Path] = [BASE_DIR / 'static']
 
 
+# Uploaded photos
+# https://docs.djangoproject.com/en/6.1/topics/files/
+# Local disk for development (media/ is git-ignored). In production, point STORAGES['default']
+# at object storage (S3 or R2 through django-storages) behind a CDN instead.
+
+MEDIA_URL = 'media/'
+MEDIA_ROOT: Path = BASE_DIR / 'media'
+
+
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 

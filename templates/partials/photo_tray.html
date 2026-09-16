@@ -1,0 +1,28 @@
+{# The member's uploaded photos, waiting to be placed in the post. editor.js shows this and runs it; #}
+{# without JavaScript it stays hidden and the plain file input (data-photo-fallback) is used instead. #}
+<section class="tray" data-photo-tray data-upload-url="{% url 'photo_upload' %}" data-max-mb="{{ max_upload_mb }}" aria-labelledby="tray-title" hidden>
+  <div class="tray__head">
+    <h3 id="tray-title">Your photos</h3>
+    <button type="button" class="btn" data-tray-add>Add photos</button>
+    <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.JPG,.jpeg,.JPEG,.png,.PNG,.webp,.WEBP" multiple hidden data-tray-input>
+  </div>
+  <p class="hint">
+    Put the cursor where a photo should go, then choose <strong>Insert</strong> on the photo.
+    Drag the corner of a photo in your post to resize it.
+    Up to {{ max_photos }} photos per post, {{ max_upload_mb }} MB each; location details are removed.
+  </p>
+  <ul class="tray__list" data-tray-list>
+    {% for photo in waiting_photos %}
+      <li class="tray__item" data-photo="{{ photo.pk }}" data-src="{{ photo.display_url }}"
+          data-remove-url="{% url 'photo_remove' photo.pk %}">
+        <img src="{{ photo.preview_url }}" alt="" loading="lazy">
+        <div class="tray__actions">
+          <button type="button" class="tray__insert" data-tray-insert aria-label="Insert photo {{ forloop.counter }} at the cursor">Insert</button>
+          <button type="button" class="tray__remove" data-tray-remove aria-label="Remove photo {{ forloop.counter }}">&times;</button>
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+  <p class="tray__empty" data-tray-empty{% if waiting_photos %} hidden{% endif %}>No photos yet. Add some, then insert them into your post.</p>
+  <ul class="errors" data-tray-errors aria-live="polite"></ul>
+</section>

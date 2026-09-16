@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize forum_extras %}
+{% load humanize forum_extras static %}
 
 {% block title %}{{ thread.title }} | Chai &amp; Trails{% endblock %}
 
@@ -34,9 +34,12 @@
          <a href="{% url 'register' %}">join the forum</a> to reply.</p>
     {% else %}
       {# POST to this same page: ThreadView.post() saves the reply. #}
-      <form method="post" action="{{ request.get_full_path }}">
+      <form method="post" action="{{ request.get_full_path }}" enctype="multipart/form-data">
         {% csrf_token %}
         {% include "partials/editor.html" with field=form.body hide_label=True %}
+        {% include "partials/photo_tray.html" %}
+        {# Without JavaScript, photos come through this plain input and go at the end of the post. #}
+        <div data-photo-fallback>{% include "partials/field.html" with field=form.photos %}</div>
         <div class="pagehead__side" style="margin-top:1rem">
           <button class="btn btn--go" type="submit">Post reply</button>
         </div>
@@ -44,4 +47,9 @@
     {% endif %}
   </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+{# The visual editor: TipTap, bundled from frontend/editor (npm run build). #}
+<script src="{% static 'js/editor.js' %}"></script>
 {% endblock %}

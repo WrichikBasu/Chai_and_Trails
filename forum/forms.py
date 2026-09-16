@@ -7,11 +7,19 @@ from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.core.exceptions import ValidationError
 
 from .models import Category, Forum, Thread, User
+from .photos import MAX_UPLOAD_BYTES, PreparedPhoto, prepare_photo
+from .rendering import photo_ids
 
 POST_MAX_LENGTH: Final[int] = 20_000
+MAX_PHOTOS: Final[int] = 10
+PHOTOS_HINT: Final[str] = (
+    f'Up to {MAX_PHOTOS} photos: JPEG, PNG or WebP, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB each. '
+    'They are placed at the end of your post. Location and camera details are removed before anything is stored.'
+)
 MARKDOWN_HINT: Final[str] = (
     'Formatting uses Markdown: **bold**, _italic_, [link text](https://…), > quote, - list. '
-    'HTML is shown as plain text.'
+    'Add photos with the Photo button, or paste or drop them into the text; move a photo by moving its '
+    '![…](attachment:…) line, and describe it inside the brackets. HTML is shown as plain text.'
 )
 
 
@@ -81,6 +89,44 @@ def forum_choices() -> Iterator[tuple[int, str]]:
         yield from walk(list(category.forums.all()), f'{category.title}: ')
 
 
+class MultiplePhotoInput(forms.FileInput):
+    allow_multiple_selected = True
+
+
+class PhotosField(forms.FileField):
+    """Up to MAX_PHOTOS photos from one <input type="file" multiple>, each checked and cleaned.
+
+    cleaned_data holds PreparedPhoto objects: already re-encoded without metadata,
+    ready for start_thread() or add_reply() to save.
+    """
+
+    widget = MultiplePhotoInput(attrs={
+        # Also makes iPhones convert HEIC photos to JPEG as they are picked.
+        'accept': 'image/jpeg,image/png,image/webp,.jpg,.JPG,.jpeg,.JPEG,.png,.PNG,.webp,.WEBP',
+    })
+
+    def __init__(self, **kwargs: Any) -> None:
+        kwargs.setdefault('required', False)
+        kwargs.setdefault('label', 'Photos')
+        kwargs.setdefault('help_text', PHOTOS_HINT)
+        super().__init__(**kwargs)
+
+    def clean(self, data: Any, initial: Any = None) -> list[PreparedPhoto]:
+        uploads = [upload for upload in (data if isinstance(data, (list, tuple)) else [data]) if upload]
+        if len(uploads) > MAX_PHOTOS:
+            raise ValidationError(f'Attach up to {MAX_PHOTOS} photos to one post ({len(uploads)} chosen).')
+        photos: list[PreparedPhoto] = []
+        errors: list[ValidationError] = []
+        for upload in uploads:
+            try:
+                photos.append(prepare_photo(super().clean(upload, initial)))
+            except ValidationError as error:
+                errors.append(error)  # report every bad file at once, not just the first
+        if errors:
+            raise ValidationError(errors)
+        return photos
+
+
 def body_field() -> forms.CharField:
     return forms.CharField(
         max_length=POST_MAX_LENGTH,
@@ -89,10 +135,22 @@ def body_field() -> forms.CharField:
     )
 
 
-class NewThreadForm(forms.ModelForm):
+class PhotoLimitMixin(forms.BaseForm):
+    """No more than MAX_PHOTOS per post, counting photos placed in the text and any sent with the form."""
+
+    def clean(self) -> dict[str, Any]:
+        cleaned: dict[str, Any] = super().clean()
+        total = len(photo_ids(cleaned.get('body') or '')) + len(cleaned.get('photos') or [])
+        if total > MAX_PHOTOS:
+            self.add_error('body', f'A post can hold up to {MAX_PHOTOS} photos ({total} added).')
+        return cleaned
+
+
+class NewThreadForm(PhotoLimitMixin, forms.ModelForm):
     """A ModelForm for Thread's own fields, plus the opening post's text."""
 
     body = body_field()
+    photos = PhotosField()
 
     class Meta:
         model = Thread
@@ -116,8 +174,9 @@ class NewThreadForm(forms.ModelForm):
         return [('', 'Choose a section'), *forum_choices()]
 
 
-class ReplyForm(forms.Form):
+class ReplyForm(PhotoLimitMixin, forms.Form):
     body = body_field()
+    photos = PhotosField()
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

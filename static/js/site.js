@@ -53,7 +53,8 @@
   var replyBox = document.getElementById('reply-body');
   document.querySelectorAll('[data-quote]').forEach(function (button) {
     button.addEventListener('click', function (event) {
-      if (!replyBox) { return; }
+      // With the visual editor running, editor.js handles quoting instead.
+      if (!replyBox || replyBox.closest('.editor--visual')) { return; }
       event.preventDefault();
       var source = document.getElementById(button.getAttribute('data-quote-from'));
       var lines = ['> ' + button.getAttribute('data-quote') + ' wrote:', '>'];
@@ -76,6 +77,7 @@
   };
   document.querySelectorAll('[data-md]').forEach(function (button) {
     button.addEventListener('click', function () {
+      if (button.closest('.editor--visual')) { return; }  // editor.js drives these buttons then
       var box = button.closest('.editor').querySelector('textarea');
       var format = FORMATS[button.getAttribute('data-md')];
       if (!box || !format) { return; }

@@ -1,31 +1,39 @@
 import json
 import re
+import shutil
+import tempfile
 import unicodedata
 from datetime import timedelta
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.staticfiles import finders
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.db import IntegrityError, connection, transaction
 from django.db.models import Model
 from django.http import HttpResponse
 from django.templatetags.static import static
-from django.test import Client, SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import dateformat, timezone
+from PIL import Image
 
 from .management.commands.import_forums import DATA_FILE, JsonData, JsonForum, parse_when
-from .models import SLUG_MAX_LENGTH, Category, Forum, Post, Thread, Tone, User, transliterated_slug
+from .forms import MAX_PHOTOS
+from .models import SLUG_MAX_LENGTH, Attachment, Category, Forum, Post, Thread, Tone, User, transliterated_slug
+from .photos import MAX_UPLOAD_BYTES, prepare_photo
 from .posting import add_reply, start_thread
-from .rendering import render_body
+from .rendering import photo_ids, render_body
 from .templatetags.forum_extras import compact_count, forum_time
-from .views import POSTS_PER_PAGE
+from .views import MAX_WAITING_PHOTOS, POSTS_PER_PAGE
 
 
 class UserModelTests(TestCase):
@@ -803,3 +811,508 @@ class ThreadSlugTests(TestCase):
         response = self.client.post(f'/thread/{self.thread.pk}/old-title/', {'body': 'Batal by noon.'})
         self.assertEqual(self.thread.posts.count(), 2)
         self.assertTrue(response['Location'].startswith(self.thread.get_absolute_url()))
+
+
+def photo_bytes(
+    image_format: str = 'JPEG', size: tuple[int, int] = (3000, 2000), *, gps: bool = True, rotated: bool = False,
+) -> bytes:
+    """A stand-in phone photo: optionally GPS-tagged (near Kaza), with XMP and a comment, and a rotation flag."""
+    exif = Image.Exif()
+    if gps:
+        exif.get_ifd(0x8825).update({1: 'N', 2: (32.0, 13.0, 30.0), 3: 'E', 4: (78.0, 4.0, 12.0)})
+    if rotated:
+        exif[0x0112] = 6  # "rotate 90° clockwise to display"
+    buffer = BytesIO()
+    extra: dict[str, object] = {}
+    if image_format == 'JPEG':
+        extra = {'xmp': b'<x:xmpmeta xmlns:x="adobe:ns:meta/">GPSLatitude 32,13.5N</x:xmpmeta>', 'comment': b'home'}
+    Image.new('RGB', size, (180, 120, 60)).save(buffer, image_format, exif=exif, **extra)
+    return buffer.getvalue()
+
+
+def camera_photo_bytes(size: tuple[int, int] = (3000, 2000)) -> bytes:
+    """What many cameras write to a .JPG: the photo plus an embedded preview (Pillow calls this MPO).
+
+    Real camera files carry EXIF as well, but Pillow's MPO writer and reader disagree when
+    it writes both, so this fixture leaves EXIF out. Metadata removal is covered by the
+    plain-JPEG tests; it runs on the same code either way.
+    """
+    main = Image.new('RGB', size, (180, 120, 60))
+    buffer = BytesIO()
+    main.save(buffer, 'MPO', save_all=True, append_images=[main.resize((size[0] // 2, size[1] // 2))])
+    return buffer.getvalue()
+
+def upload(name: str, content: bytes, content_type: str = 'image/jpeg') -> SimpleUploadedFile:
+    return SimpleUploadedFile(name, content, content_type)
+
+
+def has_location(data: bytes) -> bool:
+    with Image.open(BytesIO(data)) as image:
+        gps_in_exif = bool(image.getexif().get_ifd(0x8825))
+    return gps_in_exif or b'GPSLatitude' in data or b'Exif\x00\x00' in data
+
+
+class PhotoPreparationTests(SimpleTestCase):
+    def test_location_and_camera_details_are_removed(self) -> None:
+        original = photo_bytes()
+        self.assertTrue(has_location(original))
+        photo = prepare_photo(upload('IMG_home.jpg', original))
+        for stored in [photo.original, *photo.thumbnails.values()]:
+            with self.subTest(name=stored.name):
+                data = stored.read()
+                self.assertFalse(has_location(data))
+                self.assertNotIn(b'home', data)
+
+    def test_photo_is_straightened_and_renamed(self) -> None:
+        photo = prepare_photo(upload('IMG_home_street.jpg', photo_bytes(rotated=True)))
+        self.assertEqual((photo.width, photo.height), (2000, 3000))
+        self.assertRegex(photo.original.name, r'^[0-9a-f]{32}\.jpg$')
+
+    def test_smaller_copies_only_when_the_photo_is_wider(self) -> None:
+        big = prepare_photo(upload('big.jpg', photo_bytes(size=(3000, 2000))))
+        self.assertEqual(sorted(big.thumbnails), [800, 1600])
+        with Image.open(big.thumbnails[800]) as thumb:
+            self.assertEqual(thumb.size, (800, 533))
+        mid = prepare_photo(upload('mid.jpg', photo_bytes(size=(1200, 900))))
+        self.assertEqual(sorted(mid.thumbnails), [800])
+        small = prepare_photo(upload('small.png', photo_bytes('PNG', (500, 400)), 'image/png'))
+        self.assertEqual(small.thumbnails, {})
+
+    def test_png_and_webp_keep_their_format(self) -> None:
+        for image_format, extension in [('PNG', 'png'), ('WEBP', 'webp')]:
+            with self.subTest(image_format=image_format):
+                photo = prepare_photo(upload(f'map.{extension}', photo_bytes(image_format, (900, 600))))
+                self.assertTrue(photo.original.name.endswith(f'.{extension}'))
+                self.assertFalse(has_location(photo.original.read()))
+
+    def test_only_real_photos_are_accepted(self) -> None:
+        gif = BytesIO()
+        Image.new('RGB', (10, 10)).save(gif, 'GIF')
+        cases: dict[str, bytes] = {
+            'notes.jpg': b'just some text pretending to be a photo',
+            'anim.gif': gif.getvalue(),
+            'vector.svg': b'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>',
+            'broken.jpg': photo_bytes()[:2000],
+        }
+        for name, content in cases.items():
+            with self.subTest(name=name), self.assertRaises(ValidationError) as caught:
+                prepare_photo(upload(name, content))
+            self.assertIn(name, caught.exception.messages[0])
+
+    def test_upload_limits(self) -> None:
+        self.assertEqual((MAX_UPLOAD_BYTES, MAX_PHOTOS), (10 * 1024 * 1024, 10))
+        just_fits = prepare_photo(upload('fits.jpg', photo_bytes(size=(600, 400)) + b'\0' * (MAX_UPLOAD_BYTES - 50_000)))
+        self.assertEqual(just_fits.width, 600)
+
+    def test_camera_jpg_files_are_accepted(self) -> None:
+        # Cameras write .JPG files that hold a preview image too, which Pillow calls MPO.
+        raw = camera_photo_bytes()
+        self.assertEqual(Image.open(BytesIO(raw)).format, 'MPO')
+        photo = prepare_photo(upload('DSCF1234.JPG', raw))
+        self.assertEqual((photo.width, photo.height), (3000, 2000))
+        self.assertTrue(photo.original.name.endswith('.jpg'))
+        stored = photo.original.read()
+        with Image.open(BytesIO(stored)) as saved:
+            self.assertEqual(saved.format, 'JPEG')          # stored as a plain JPEG
+            self.assertEqual(getattr(saved, 'n_frames', 1), 1)  # the extra frame is left behind
+        self.assertFalse(has_location(stored))
+
+    def test_oversized_files_and_images_are_refused(self) -> None:
+        with self.assertRaisesMessage(ValidationError, f'larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB'):
+            prepare_photo(upload('huge.jpg', b'x' * (MAX_UPLOAD_BYTES + 1)))
+        bomb = BytesIO()
+        Image.new('1', (8000, 8000)).save(bomb, 'PNG')  # 64 megapixels, but only a few KB on disk
+        with self.assertRaisesMessage(ValidationError, 'too large (8000 × 8000 pixels)'):
+            prepare_photo(upload('bomb.png', bomb.getvalue(), 'image/png'))
+
+
+class PhotoUploadTests(TestCase):
+    media_root: str
+    member: User
+    himalaya: Forum
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.media_root = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.media_root, ignore_errors=True)
+        cls.enterClassContext(override_settings(MEDIA_ROOT=cls.media_root))  # never write into the project's media/
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera', display_name='Meera Iyer')
+        cls.himalaya = Forum.objects.get(slug='himalaya-and-ladakh')
+
+    def setUp(self) -> None:
+        self.client.force_login(self.member)
+
+    def post_thread(self, *photos: SimpleUploadedFile) -> HttpResponse:
+        return self.client.post(reverse('new_thread'), {
+            'forum': self.himalaya.pk, 'title': 'Spiti in June', 'body': 'Photos from Kaza.', 'photos': list(photos),
+        })
+
+    def test_phone_photo_appears_in_the_post_without_gps(self) -> None:
+        # Step 9's "done when": a phone photo shows in a post, and the stored file has no GPS tags.
+        response = self.post_thread(upload('IMG_2041.jpg', photo_bytes(rotated=True)))
+        thread = Thread.objects.get(title='Spiti in June')
+        self.assertRedirects(response, thread.get_absolute_url())
+
+        attachment = Attachment.objects.get()
+        self.assertEqual((attachment.post, attachment.uploader), (thread.last_post, self.member))
+        self.assertEqual((attachment.width, attachment.height), (2000, 3000))
+        for stored in [attachment.file, attachment.thumbnail_800, attachment.thumbnail_1600]:
+            with self.subTest(name=stored.name):
+                self.assertTrue(Path(stored.path).is_file())
+                self.assertFalse(has_location(Path(stored.path).read_bytes()))
+
+        page = self.client.get(thread.get_absolute_url()).content.decode()
+        self.assertIn(f'src="{attachment.thumbnail_1600.url}"', page)
+        self.assertIn(f'{attachment.thumbnail_800.url} 800w', page)
+        self.assertIn(f'<figure class="photo"><a href="{attachment.file.url}"', page)
+        # Sent through the plain file input, so placed after the text.
+        self.assertLess(page.index('Photos from Kaza.'), page.index('<figure class="photo">'))
+
+    def test_reply_with_several_photos(self) -> None:
+        thread = start_thread(self.himalaya, self.member, 'Spiti in June', 'Four days.')
+        self.client.post(thread.get_absolute_url(), {
+            'body': 'Two from Chandratal.',
+            'photos': [upload('a.jpg', photo_bytes(size=(1000, 750))), upload('b.png', photo_bytes('PNG', (600, 400)), 'image/png')],
+        })
+        reply = Post.objects.latest('created_at')
+        self.assertEqual([a.file.name.rsplit('.', 1)[1] for a in reply.attachments.all()], ['jpg', 'png'])
+        self.assertEqual(reply.body_source.count('](attachment:'), 2)
+        self.assertContains(self.client.get(thread.get_absolute_url()), '<figure class="photo">', count=2)
+
+    def test_one_bad_file_saves_nothing(self) -> None:
+        response = self.post_thread(upload('good.jpg', photo_bytes()), upload('notes.jpg', b'not a photo'))
+        self.assertContains(response, 'notes.jpg couldn’t be read as a photo.')
+        self.assertFalse(Thread.objects.filter(title='Spiti in June').exists())
+        self.assertFalse(Attachment.objects.exists())
+
+    def test_too_many_photos_are_refused(self) -> None:
+        small = photo_bytes(size=(200, 150), gps=False)
+        response = self.post_thread(*(upload(f'{n}.jpg', small) for n in range(MAX_PHOTOS + 1)))
+        self.assertContains(response, f'Attach up to {MAX_PHOTOS} photos to one post ({MAX_PHOTOS + 1} chosen).')
+        self.assertFalse(Attachment.objects.exists())
+
+    def test_forms_send_files(self) -> None:
+        thread = start_thread(self.himalaya, self.member, 'Spiti in June', 'Four days.')
+        for url in [reverse('new_thread'), thread.get_absolute_url()]:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertContains(response, 'enctype="multipart/form-data"')
+                self.assertContains(response, 'accept="image/jpeg,image/png,image/webp,.jpg,.JPG')
+
+    def test_showing_photos_needs_no_queries_per_post(self) -> None:
+        thread = start_thread(self.himalaya, self.member, 'Spiti in June', 'Four days.',
+                              [prepare_photo(upload('a.jpg', photo_bytes(size=(900, 600))))])
+        for n in range(3):
+            add_reply(thread, self.member, f'Reply {n}', [prepare_photo(upload(f'{n}.jpg', photo_bytes(size=(900, 600))))])
+        with CaptureQueriesContext(connection) as queries:
+            self.client.get(thread.get_absolute_url())
+        # Posts carry their photos in body_html. The one query is the member's photo tray,
+        # the same however many posts on the page have photos.
+        attachment_queries = [q['sql'] for q in queries.captured_queries if 'forum_attachment' in q['sql']]
+        self.assertEqual(len(attachment_queries), 1)
+        self.assertIn('"post_id" IS NULL', attachment_queries[0])
+
+    def test_admin_lists_photos(self) -> None:
+        start_thread(self.himalaya, self.member, 'Spiti in June', 'Four days.',
+                     [prepare_photo(upload('a.jpg', photo_bytes(size=(900, 600))))])
+        self.client.force_login(User.objects.create_superuser('boss', 'boss@example.com', 'x'))
+        self.assertEqual(self.client.get(reverse('admin:forum_attachment_changelist')).status_code, 200)
+        self.assertEqual(self.client.get(reverse('admin:forum_attachment_add')).status_code, 403)
+
+
+def fake_photo(url: str = '/media/attachments/p') -> SimpleNamespace:
+    """Stands in for an Attachment when testing the renderer alone."""
+    return SimpleNamespace(display_url=f'{url}-1600.jpg', file=SimpleNamespace(url=f'{url}.jpg'),
+                           srcset=f'{url}-800.jpg 800w, {url}-1600.jpg 1600w, {url}.jpg 3000w', width=3000, height=2000)
+
+
+class PhotoRenderingTests(SimpleTestCase):
+    def test_photo_on_its_own_line_becomes_a_full_width_figure(self) -> None:
+        html = render_body('Day one.\n\n![Rohtang at dawn](attachment:7)\n\nDay two.', {7: fake_photo()})
+        self.assertInHTML(
+            '<figure class="photo"><a href="/media/attachments/p.jpg" rel="nofollow ugc noopener noreferrer">'
+            '<img src="/media/attachments/p-1600.jpg" srcset="/media/attachments/p-800.jpg 800w, '
+            '/media/attachments/p-1600.jpg 1600w, /media/attachments/p.jpg 3000w" sizes="(max-width: 48rem) 100vw, 60rem" '
+            'width="3000" height="2000" alt="Rohtang at dawn" loading="lazy" decoding="async" data-photo="7"></a></figure>', html)
+        self.assertLess(html.index('Day one.'), html.index('<figure'))
+        self.assertLess(html.index('</figure>'), html.index('Day two.'))
+        self.assertNotIn('<p><figure', html)
+
+    def test_photo_mid_sentence_stays_in_its_paragraph(self) -> None:
+        html = render_body('Look at ![this](attachment:7) view.', {7: fake_photo()})
+        self.assertTrue(html.startswith('<p>Look at <a class="photo"'))
+
+    def test_only_this_posts_photos_are_shown(self) -> None:
+        self.assertEqual(render_body('![someone else’s](attachment:8)', {7: fake_photo()}).strip(), '')
+
+    def test_outside_pictures_are_linked_not_loaded(self) -> None:
+        html = render_body('![map](https://example.com/x.png)')
+        self.assertNotIn('<img', html)
+        self.assertIn('<p><a href="https://example.com/x.png" rel="nofollow ugc noopener noreferrer">map</a></p>', html)
+
+    def test_images_load_only_from_this_sites_storage(self) -> None:
+        html = render_body('![x](attachment:1)', {1: fake_photo('https://evil.example/x')})
+        self.assertNotIn('evil.example/x-1600', html.split('<img')[1])  # src and srcset removed from the <img>
+
+    def test_photo_ids_are_found_in_order_once(self) -> None:
+        self.assertEqual(photo_ids('![a](attachment:3)\n\n![b](attachment:1)\n\n![again](attachment:3) ![x](https://e.com/y)'), [3, 1])
+
+
+class InlinePhotoTests(TestCase):
+    media_root: str
+    member: User
+    other: User
+    thread: Thread
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.media_root = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.media_root, ignore_errors=True)
+        cls.enterClassContext(override_settings(MEDIA_ROOT=cls.media_root))
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera', display_name='Meera Iyer')
+        cls.other = User.objects.create_user('tenzin')
+        cls.thread = start_thread(Forum.objects.get(slug='himalaya-and-ladakh'), cls.member, 'Spiti in June', 'Four days.')
+
+    def setUp(self) -> None:
+        self.client.force_login(self.member)
+
+    def upload_photo(self, size: tuple[int, int] = (3000, 2000)) -> dict[str, Any]:
+        response = self.client.post(reverse('photo_upload'), {'photo': upload('IMG.jpg', photo_bytes(size=size))})
+        self.assertEqual(response.status_code, 201, response.content)
+        return response.json()
+
+    def test_upload_returns_the_line_that_places_the_photo(self) -> None:
+        body = self.upload_photo()
+        attachment = Attachment.objects.get(pk=body['id'])
+        self.assertEqual(body['markdown'], f'![photo](attachment:{attachment.pk})')
+        self.assertEqual((attachment.uploader, attachment.post), (self.member, None))  # waiting for its post
+        self.assertFalse(has_location(Path(attachment.file.path).read_bytes()))
+
+    def test_upload_refusals(self) -> None:
+        self.assertEqual(self.client.get(reverse('photo_upload')).status_code, 405)
+        response = self.client.post(reverse('photo_upload'), {'photo': upload('notes.jpg', b'not a photo')})
+        self.assertEqual((response.status_code, response.json()), (400, {'error': 'notes.jpg couldn’t be read as a photo.'}))
+        self.assertEqual(self.client.post(reverse('photo_upload')).status_code, 400)
+        self.client.logout()
+        self.assertEqual(self.client.post(reverse('photo_upload'), {'photo': upload('a.jpg', photo_bytes())}).status_code, 403)
+        self.assertFalse(Attachment.objects.exists())
+
+    def test_waiting_photos_are_capped(self) -> None:
+        photo = prepare_photo(upload('a.jpg', photo_bytes(size=(200, 150), gps=False)))
+        Attachment.objects.bulk_create([
+            Attachment(uploader=self.member, file=photo.original.name, width=200, height=150, size=1)
+            for _ in range(MAX_WAITING_PHOTOS)
+        ])
+        response = self.client.post(reverse('photo_upload'), {'photo': upload('b.jpg', photo_bytes(size=(200, 150)))})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('too many photos waiting', response.json()['error'])
+
+    def test_photos_appear_where_the_text_places_them(self) -> None:
+        first, second = self.upload_photo(), self.upload_photo(size=(1200, 800))
+        body = f'Day one.\n\n![Rohtang](attachment:{first["id"]})\n\nDay two.\n\n![Kaza](attachment:{second["id"]})'
+        self.client.post(self.thread.get_absolute_url(), {'body': body})
+
+        reply = Post.objects.latest('created_at')
+        self.assertEqual(set(reply.attachments.values_list('pk', flat=True)), {first['id'], second['id']})
+        html = reply.body_html
+        positions = [html.index(s) for s in ['Day one.', 'alt="Rohtang"', 'Day two.', 'alt="Kaza"']]
+        self.assertEqual(positions, sorted(positions))
+        rohtang = Attachment.objects.get(pk=first['id'])
+        self.assertIn(f'src="{rohtang.thumbnail_1600.url}"', html)  # shown large, not as a thumbnail
+        self.assertIn(f'<a href="{rohtang.file.url}"', html)          # opens the full-resolution photo
+
+    def test_other_members_photos_cannot_be_borrowed(self) -> None:
+        theirs = Attachment.objects.create(
+            uploader=self.other, file=prepare_photo(upload('t.jpg', photo_bytes(size=(300, 200)))).original)
+        self.client.post(self.thread.get_absolute_url(), {'body': f'Mine now: ![x](attachment:{theirs.pk})'})
+        theirs.refresh_from_db()
+        self.assertIsNone(theirs.post)
+        self.assertNotIn('<img', Post.objects.latest('created_at').body_html)
+
+    def test_a_posted_photo_cannot_be_reused_elsewhere(self) -> None:
+        placed = self.upload_photo()
+        self.client.post(self.thread.get_absolute_url(), {'body': f'![a](attachment:{placed["id"]})'})
+        self.client.post(self.thread.get_absolute_url(), {'body': f'Again: ![a](attachment:{placed["id"]})'})
+        self.assertNotIn('<img', Post.objects.latest('created_at').body_html)
+
+    def test_photo_limit_counts_placed_photos(self) -> None:
+        body = '\n\n'.join(f'![p](attachment:{n})' for n in range(1, MAX_PHOTOS + 2))
+        response = self.client.post(self.thread.get_absolute_url(), {'body': body})
+        self.assertContains(response, f'A post can hold up to {MAX_PHOTOS} photos ({MAX_PHOTOS + 1} added).')
+
+    def test_editor_pages_load_the_visual_editor_and_keep_a_fallback(self) -> None:
+        for url in [self.thread.get_absolute_url(), reverse('new_thread')]:
+            with self.subTest(url=url):
+                page = self.client.get(url)
+                self.assertContains(page, '<div class="editor" data-visual-editor>')  # editor.js mounts here
+                self.assertContains(page, 'data-photo-tray')                          # shown by editor.js
+                self.assertContains(page, f'data-upload-url="{reverse("photo_upload")}"')
+                self.assertContains(page, '<div data-photo-fallback>')                # hidden by editor.js
+                self.assertContains(page, f'<script src="{static("js/editor.js")}"></script>', html=True)
+        self.assertNotContains(self.client.get(reverse('index')), 'js/editor.js')
+        self.assertIsNotNone(finders.find('js/editor.js'))
+        self.assertIsNone(finders.find('js/photos.js'))
+
+    def test_admin_edit_keeps_the_photos(self) -> None:
+        placed = self.upload_photo()
+        self.client.post(self.thread.get_absolute_url(), {'body': f'![a](attachment:{placed["id"]})'})
+        reply = Post.objects.latest('created_at')
+        self.client.force_login(User.objects.create_superuser('boss', 'boss@example.com', 'x'))
+        self.client.post(reverse('admin:forum_post_change', args=[reply.pk]),
+                         {'body_source': f'Edited.\n\n![a](attachment:{placed["id"]})'})
+        reply.refresh_from_db()
+        self.assertIn('Edited.', reply.body_html)
+        self.assertIn('<figure class="photo">', reply.body_html)
+
+
+class RerenderPostsTests(TestCase):
+    def test_rerender_rebuilds_html_from_markdown(self) -> None:
+        import_forums()
+        post = Post.objects.first()
+        assert post is not None
+        Post.objects.filter(pk=post.pk).update(body_source='Now **bold**.', body_html='stale')
+        out = StringIO()
+        call_command('rerender_posts', stdout=out)
+        post.refresh_from_db()
+        self.assertEqual(post.body_html, '<p>Now <strong>bold</strong>.</p>\n')
+        self.assertIn('1 changed', out.getvalue())
+
+
+class PhotoWidthRenderingTests(SimpleTestCase):
+    def test_resized_photo_keeps_its_width(self) -> None:
+        # The exact line the editor writes after a photo is dragged to 60%.
+        html = render_body('Intro\n\n![Rohtang](attachment:41){width="60%"}\n\nOutro', {41: fake_photo()})
+        self.assertIn('<figure class="photo" style="width:60%">', html)
+
+    def test_widths_are_kept_in_range(self) -> None:
+        for given, shown in [('5%', 'style="width:20%"'), ('100%', '<figure class="photo"><a'), ('abc', '<figure class="photo"><a')]:
+            with self.subTest(width=given):
+                self.assertIn(shown, render_body(f'![x](attachment:1){{width="{given}"}}', {1: fake_photo()}))
+
+    def test_no_other_attributes_can_be_added(self) -> None:
+        html = render_body('![x](attachment:1){width="50%" onerror="alert(1)"} [l](https://e.com){onclick="x()"}', {1: fake_photo()})
+        self.assertNotRegex(html, r'<[^>]*\b(onerror|onclick)=')  # no tag gets them as attributes
+        self.assertIn('</a>{onclick="x()"}', html)                  # after a link they stay visible text
+
+    def test_photos_carry_their_id_for_the_editor(self) -> None:
+        self.assertIn('data-photo="41"', render_body('![x](attachment:41)', {41: fake_photo()}))
+
+
+class PhotoTrayTests(TestCase):
+    media_root: str
+    member: User
+    thread: Thread
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.media_root = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.media_root, ignore_errors=True)
+        cls.enterClassContext(override_settings(MEDIA_ROOT=cls.media_root))
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera')
+        cls.thread = start_thread(Forum.objects.get(slug='himalaya-and-ladakh'), cls.member, 'Spiti in June', 'Four days.')
+
+    def setUp(self) -> None:
+        self.client.force_login(self.member)
+
+    def upload_photo(self) -> dict[str, Any]:
+        return self.client.post(reverse('photo_upload'), {'photo': upload('IMG.jpg', photo_bytes(size=(2000, 1500)))}).json()
+
+    def test_upload_reply_has_what_the_tray_needs(self) -> None:
+        body = self.upload_photo()
+        photo = Attachment.objects.get(pk=body['id'])
+        self.assertEqual(body['preview_url'], photo.thumbnail_800.url)
+        self.assertEqual(body['display_url'], photo.thumbnail_1600.url)
+        self.assertEqual((body['width'], body['height']), (2000, 1500))
+        self.assertEqual(body['remove_url'], reverse('photo_remove', args=[photo.pk]))
+
+    def test_tray_lists_the_members_waiting_photos(self) -> None:
+        first, second = self.upload_photo(), self.upload_photo()
+        page = self.client.get(self.thread.get_absolute_url()).content.decode()
+        self.assertLess(page.index(f'data-photo="{first["id"]}"'), page.index(f'data-photo="{second["id"]}"'))
+        self.assertIn(f'src="{first["preview_url"]}"', page)
+        self.assertIn('aria-label="Insert photo 1 at the cursor"', page)
+        self.client.force_login(User.objects.create_user('tenzin'))  # someone else's tray is empty
+        self.assertNotContains(self.client.get(self.thread.get_absolute_url()), f'data-photo="{first["id"]}"')
+
+    def test_removing_a_waiting_photo_deletes_its_files(self) -> None:
+        photo = Attachment.objects.get(pk=self.upload_photo()['id'])
+        paths = [Path(stored.path) for stored in (photo.file, photo.thumbnail_800, photo.thumbnail_1600)]
+        self.assertTrue(all(path.exists() for path in paths))
+        response = self.client.post(reverse('photo_remove', args=[photo.pk]))
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(Attachment.objects.filter(pk=photo.pk).exists())
+        self.assertFalse(any(path.exists() for path in paths))
+
+    def test_only_your_own_waiting_photos_can_be_removed(self) -> None:
+        mine = self.upload_photo()
+        self.client.post(self.thread.get_absolute_url(), {'body': f'![a](attachment:{mine["id"]})'})
+        self.assertEqual(self.client.post(reverse('photo_remove', args=[mine['id']])).status_code, 404)  # posted now
+        theirs = Attachment.objects.create(
+            uploader=User.objects.create_user('tenzin'), file=prepare_photo(upload('t.jpg', photo_bytes(size=(300, 200)))).original)
+        self.assertEqual(self.client.post(reverse('photo_remove', args=[theirs.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('photo_remove', args=[theirs.pk])).status_code, 405)
+        self.client.logout()
+        self.assertEqual(self.client.post(reverse('photo_remove', args=[theirs.pk])).status_code, 403)
+        self.assertEqual(Attachment.objects.count(), 2)
+
+    def test_failed_submit_reopens_the_editor_with_text_and_photos(self) -> None:
+        placed = self.upload_photo()
+        body = f'Day one.\n\n![Rohtang](attachment:{placed["id"]}){{width="60%"}}\n\n' + 'x' * 20_001  # too long
+        page = self.client.post(self.thread.get_absolute_url(), {'body': body}).content.decode()
+        saved = page.split('<template data-editor-html>')[1].split('</template>')[0]
+        self.assertIn('<p>Day one.</p>', saved)
+        self.assertIn(f'data-photo="{placed["id"]}"', saved)
+        self.assertIn('style="width:60%"', saved)
+        self.assertIsNone(Attachment.objects.get(pk=placed['id']).post)  # still waiting: nothing was posted
+
+
+class CameraPhotoUploadTests(TestCase):
+    media_root: str
+    member: User
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.media_root = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.media_root, ignore_errors=True)
+        cls.enterClassContext(override_settings(MEDIA_ROOT=cls.media_root))
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera')
+
+    def test_camera_jpg_uploads_through_the_editor(self) -> None:
+        self.client.force_login(self.member)
+        # Browsers often report no type at all for camera files.
+        response = self.client.post(reverse('photo_upload'), {
+            'photo': upload('DSCF1234.JPG', camera_photo_bytes(), content_type=''),
+        })
+        self.assertEqual(response.status_code, 201, response.content)
+        photo = Attachment.objects.get(pk=response.json()['id'])
+        self.assertEqual((photo.width, photo.height), (3000, 2000))
+        self.assertFalse(has_location(Path(photo.file.path).read_bytes()))
+
+    def test_the_file_picker_offers_uppercase_extensions(self) -> None:
+        # The picker's extension filter is case-sensitive on Linux, so .JPG must be listed too.
+        self.client.force_login(self.member)
+        page = self.client.get(reverse('new_thread')).content.decode()
+        for accept in re.findall(r'accept="([^"]+)"', page):
+            with self.subTest(accept=accept):
+                self.assertIn('.JPG', accept)
+                self.assertIn('.jpg', accept)

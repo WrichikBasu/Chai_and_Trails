@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Start a thread | Chai &amp; Trails{% endblock %}
 
@@ -16,7 +17,8 @@
   <section class="block">
     <div class="block__bar block__bar--plain"><h2>Your thread</h2></div>
     <div class="block__body">
-      <form method="post" action="{% url 'new_thread' %}">
+      {# multipart: without it the browser sends only the photos' file names, not the files. #}
+      <form method="post" action="{% url 'new_thread' %}" enctype="multipart/form-data">
         {% csrf_token %}
         {% if form.non_field_errors %}
           <ul class="errors errors--form">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>
@@ -24,6 +26,9 @@
         {% include "partials/field.html" with field=form.forum %}
         {% include "partials/field.html" with field=form.title %}
         {% include "partials/editor.html" with field=form.body %}
+        {% include "partials/photo_tray.html" %}
+        {# Without JavaScript, photos come through this plain input and go at the end of the post. #}
+        <div data-photo-fallback>{% include "partials/field.html" with field=form.photos %}</div>
 
         <div class="pagehead__side">
           <button class="btn btn--go" type="submit">Post thread</button>
@@ -46,4 +51,9 @@
     </section>
   </aside>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{# The visual editor: TipTap, bundled from frontend/editor (npm run build). #}
+<script src="{% static 'js/editor.js' %}"></script>
 {% endblock %}

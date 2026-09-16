@@ -1,7 +1,8 @@
 <div class="field">
   <label for="{{ field.id_for_label }}"{% if hide_label %} class="only-screenreader"{% endif %}>{{ field.label }}</label>
-  <div class="editor">
-    {# Each button wraps the selected text in Markdown; see site.js. #}
+  {# editor.js turns this into a visual editor that writes Markdown into the text box below it. #}
+  {# Without JavaScript the text box stays, and the buttons wrap text in Markdown (site.js). #}
+  <div class="editor" data-visual-editor>
     <div class="editor__tools" role="toolbar" aria-label="Formatting">
       <button type="button" title="Bold" data-md="bold"><strong>B</strong></button>
       <button type="button" title="Italic" data-md="italic"><em>I</em></button>
@@ -10,9 +11,11 @@
       <button type="button" title="List" data-md="list">List</button>
     </div>
     {{ field }}
+    {# After a failed submit: the post so far, rendered to HTML (and cleaned), for the visual editor to reopen. #}
+    <template data-editor-html>{{ editor_html|default:''|safe }}</template>
   </div>
   {% if field.errors %}
     <ul class="errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>
   {% endif %}
-  <p class="hint" id="{{ field.id_for_label }}_helptext">{{ field.help_text }}</p>
+  <p class="hint" id="{{ field.id_for_label }}_helptext" data-editor-hint>{{ field.help_text }}</p>
 </div>

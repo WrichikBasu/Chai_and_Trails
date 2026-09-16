@@ -12,6 +12,8 @@ urlpatterns: list[URLPattern] = [
     # Links without the slug still work: the view redirects them to the full address.
     path('thread/<int:pk>/', views.ThreadView.as_view(), name='thread_by_id'),
     path('new-thread/', views.NewThreadView.as_view(), name='new_thread'),
+    path('photos/upload/', views.PhotoUploadView.as_view(), name='photo_upload'),
+    path('photos/<int:pk>/remove/', views.PhotoRemoveView.as_view(), name='photo_remove'),
     path('members/', TemplateView.as_view(template_name='members.html'), name='members'),
     path('register/', views.register, name='register'),
     path(
