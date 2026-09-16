@@ -15,7 +15,7 @@ from django.views.generic import CreateView, ListView, View
 from .forms import MAX_PHOTOS, NewThreadForm, RegistrationForm, ReplyForm
 from .models import Attachment, Category, Forum, Post, Thread, User
 from .photos import MAX_UPLOAD_BYTES, prepare_photo
-from .posting import add_reply, discard_photo, save_photo, start_thread, waiting_photos
+from .posting import add_reply, discard_photos, save_photo, start_thread, waiting_photos
 from .rendering import photo_markdown, render_body
 
 THREADS_PER_PAGE: Final[int] = 20
@@ -223,7 +223,7 @@ class PhotoRemoveView(LoginRequiredMixin, View):
 
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
         photo = get_object_or_404(Attachment, pk=kwargs['pk'], uploader=request.user, post__isnull=True)
-        discard_photo(photo)
+        discard_photos([photo])
         return HttpResponse(status=204)
 
 

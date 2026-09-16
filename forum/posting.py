@@ -66,12 +66,18 @@ def waiting_photos(member: User) -> list[Attachment]:
     return list(Attachment.objects.filter(uploader=member, post__isnull=True).order_by('created_at', 'id'))
 
 
-def discard_photo(photo: Attachment) -> None:
-    """Delete a photo's files from storage, then its record."""
-    for stored in (photo.file, photo.thumbnail_800, photo.thumbnail_1600):
-        if stored:
-            stored.delete(save=False)
-    photo.delete()
+def discard_photos(photos: Sequence[Attachment]) -> None:
+    """Delete these photos: their records now, their files once the change is committed.
+
+    Files are deleted after the commit because a transaction that rolls back would
+    otherwise leave records pointing at files that are already gone.
+    """
+    if not photos:
+        return
+    files = [stored for photo in photos
+             for stored in (photo.file, photo.thumbnail_800, photo.thumbnail_1600) if stored]
+    Attachment.objects.filter(pk__in=[photo.pk for photo in photos]).delete()
+    transaction.on_commit(lambda: [stored.delete(save=False) for stored in files])
 
 
 def render_post(post: Post) -> str:
@@ -86,6 +92,10 @@ def _write_body(post: Post, author: User, source: str, uploads: Sequence[Prepare
     author's own that no post has claimed yet; a reference to anyone else's
     photo shows nothing. Photos sent with the form instead (no JavaScript) are
     saved and placed at the end of the text.
+
+    Posting also empties the author's tray: photos they uploaded but left out of
+    the post are deleted, files and all. The tray belongs to the post being
+    written, so anything still waiting when it is posted was not wanted.
     """
     Attachment.objects.filter(pk__in=photo_ids(source), uploader=author, post__isnull=True).update(post=post)
     added = [save_photo(author, photo, post) for photo in uploads]
@@ -94,6 +104,7 @@ def _write_body(post: Post, author: User, source: str, uploads: Sequence[Prepare
     post.body_source = source
     post.body_html = render_post(post)
     post.save(update_fields=['body_source', 'body_html'])
+    discard_photos(waiting_photos(author))  # whatever is left over was not used
 
 
 def _count_post(forum: Forum, author: User, post: Post, *, new_thread: bool) -> None:

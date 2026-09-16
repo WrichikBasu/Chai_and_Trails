@@ -30,7 +30,7 @@ from .management.commands.import_forums import DATA_FILE, JsonData, JsonForum, p
 from .forms import MAX_PHOTOS
 from .models import SLUG_MAX_LENGTH, Attachment, Category, Forum, Post, Thread, Tone, User, transliterated_slug
 from .photos import MAX_UPLOAD_BYTES, prepare_photo
-from .posting import add_reply, start_thread
+from .posting import add_reply, save_photo, start_thread, waiting_photos
 from .rendering import photo_ids, render_body
 from .templatetags.forum_extras import compact_count, forum_time
 from .views import MAX_WAITING_PHOTOS, POSTS_PER_PAGE
@@ -1253,7 +1253,8 @@ class PhotoTrayTests(TestCase):
         photo = Attachment.objects.get(pk=self.upload_photo()['id'])
         paths = [Path(stored.path) for stored in (photo.file, photo.thumbnail_800, photo.thumbnail_1600)]
         self.assertTrue(all(path.exists() for path in paths))
-        response = self.client.post(reverse('photo_remove', args=[photo.pk]))
+        with self.captureOnCommitCallbacks(execute=True):  # files are deleted once the change commits
+            response = self.client.post(reverse('photo_remove', args=[photo.pk]))
         self.assertEqual(response.status_code, 204)
         self.assertFalse(Attachment.objects.filter(pk=photo.pk).exists())
         self.assertFalse(any(path.exists() for path in paths))
@@ -1316,3 +1317,76 @@ class CameraPhotoUploadTests(TestCase):
             with self.subTest(accept=accept):
                 self.assertIn('.JPG', accept)
                 self.assertIn('.jpg', accept)
+
+
+class LeftoverPhotoTests(TestCase):
+    """Posting empties the tray: photos uploaded but not used are deleted, files and all."""
+
+    media_root: str
+    member: User
+    other: User
+    thread: Thread
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.media_root = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.media_root, ignore_errors=True)
+        cls.enterClassContext(override_settings(MEDIA_ROOT=cls.media_root))
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera')
+        cls.other = User.objects.create_user('tenzin')
+        cls.thread = start_thread(Forum.objects.get(slug='himalaya-and-ladakh'), cls.member, 'Spiti in June', 'Four days.')
+
+    def waiting_photo(self, member: User | None = None) -> Attachment:
+        # Big enough to get its smaller copies too, so the test can check those files as well.
+        return save_photo(member or self.member, prepare_photo(upload('IMG.jpg', photo_bytes(size=(2000, 1500)))))
+
+    def test_replying_keeps_the_placed_photo_and_deletes_the_rest(self) -> None:
+        placed, leftover = self.waiting_photo(), self.waiting_photo()
+        leftover_files = [Path(stored.path) for stored in (leftover.file, leftover.thumbnail_800)]
+        self.client.force_login(self.member)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(self.thread.get_absolute_url(), {'body': f'Here it is.\n\n![a](attachment:{placed.pk})'})
+
+        placed.refresh_from_db()
+        self.assertEqual(placed.post, Post.objects.latest('created_at'))
+        self.assertFalse(Attachment.objects.filter(pk=leftover.pk).exists())
+        self.assertFalse(any(path.exists() for path in leftover_files))
+        self.assertEqual(waiting_photos(self.member), [])
+
+    def test_starting_a_thread_empties_the_tray_too(self) -> None:
+        leftover = self.waiting_photo()
+        self.client.force_login(self.member)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('new_thread'), {
+                'forum': Forum.objects.get(slug='himalaya-and-ladakh').pk, 'title': 'Kaza in July', 'body': 'No photos.',
+            })
+        self.assertFalse(Attachment.objects.filter(pk=leftover.pk).exists())
+
+    def test_other_members_photos_are_left_alone(self) -> None:
+        theirs = self.waiting_photo(self.other)
+        self.client.force_login(self.member)
+        self.client.post(self.thread.get_absolute_url(), {'body': 'Nothing of mine.'})
+        self.assertTrue(Attachment.objects.filter(pk=theirs.pk).exists())
+        self.assertEqual(waiting_photos(self.other), [theirs])
+
+    def test_a_failed_reply_keeps_the_tray(self) -> None:
+        waiting = self.waiting_photo()
+        self.client.force_login(self.member)
+        response = self.client.post(self.thread.get_absolute_url(), {'body': ''})  # required
+        self.assertContains(response, 'This field is required.')
+        self.assertEqual(waiting_photos(self.member), [waiting])
+
+    def test_posted_photos_are_never_touched(self) -> None:
+        placed = self.waiting_photo()
+        self.client.force_login(self.member)
+        self.client.post(self.thread.get_absolute_url(), {'body': f'![a](attachment:{placed.pk})'})
+        with self.captureOnCommitCallbacks(execute=True):  # a later post must not disturb it
+            self.client.post(self.thread.get_absolute_url(), {'body': 'Plain reply.'})
+        placed.refresh_from_db()
+        self.assertTrue(Path(placed.file.path).exists())
