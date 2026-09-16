@@ -20,9 +20,10 @@ PHOTOS_HINT: Final[str] = (
     'They are placed at the end of your post. Location and camera details are removed before anything is stored.'
 )
 MARKDOWN_HINT: Final[str] = (
-    'Formatting uses Markdown: **bold**, _italic_, [link text](https://…), > quote, - list. '
-    'Add photos with the Photo button, or paste or drop them into the text; move a photo by moving its '
-    '![…](attachment:…) line, and describe it inside the brackets. HTML is shown as plain text.'
+    'Formatting uses Markdown: **bold**, _italic_, [link text](https://…), > quote, - list, '
+    'and | tables | like this |. HTML works too for anything Markdown can\'t say, such as '
+    '<p style="text-align: center">; scripts and anything unsafe are removed. '
+    'Photos are placed with their ![…](attachment:…) line, which you can move.'
 )
 
 

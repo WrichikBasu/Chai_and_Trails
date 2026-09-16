@@ -1,16 +1,28 @@
 // The editor's document, written out as Markdown: what the form sends and the
 // server stores in Post.body_source, then renders and cleans (forum/rendering.py).
 
+import { DOMSerializer } from '@tiptap/pm/model';
 import { MarkdownSerializer, defaultMarkdownSerializer } from 'prosemirror-markdown';
 
 const { nodes, marks } = defaultMarkdownSerializer;
 
+// Markdown can't express text alignment or anything but the simplest tables, so those
+// blocks are written as HTML, which posts allow (the server cleans it either way).
+function asHtml(state, node) {
+  const wrapper = document.createElement('div');
+  wrapper.append(DOMSerializer.fromSchema(node.type.schema).serializeNode(node));
+  state.write(wrapper.innerHTML);
+  state.closeBlock(node);
+}
+
+const aligned = (node) => node.attrs.textAlign && node.attrs.textAlign !== 'left';
+
 // prosemirror-markdown names things the ProseMirror way (bullet_list); TipTap's names differ (bulletList).
 const serializer = new MarkdownSerializer(
   {
-    paragraph: nodes.paragraph,
+    paragraph: (state, node) => (aligned(node) ? asHtml(state, node) : nodes.paragraph(state, node)),
     text: nodes.text,
-    heading: nodes.heading,
+    heading: (state, node) => (aligned(node) ? asHtml(state, node) : nodes.heading(state, node)),
     blockquote: nodes.blockquote,
     codeBlock: nodes.code_block,
     horizontalRule: nodes.horizontal_rule,
@@ -25,6 +37,7 @@ const serializer = new MarkdownSerializer(
         return `${' '.repeat(widest - number.length)}${number}. `;
       });
     },
+    table: asHtml,
     photo(state, node) {
       const { id, alt, width } = node.attrs;
       const size = width < 100 ? `{width="${width}%"}` : '';

@@ -1,10 +1,12 @@
 """Turn what a member typed (Markdown) into the HTML a post page shows.
 
-Two layers, so a slip in one is caught by the other:
-1. markdown-it renders CommonMark with raw HTML switched off, so <script> in a
-   post comes out as visible text, and links with unsafe schemes such as
-   javascript: are not turned into links.
-2. nh3 then removes every tag and attribute not listed below.
+Members may write HTML as well as Markdown, so cleaning is what keeps posts safe:
+1. markdown-it renders CommonMark and passes HTML through. Links with unsafe
+   schemes such as javascript: are not turned into links.
+2. nh3 then removes every tag and attribute not listed below, and throws away
+   <script> and <style> along with what they contain. What survives is the
+   allowlist here: text formatting, lists, quotes, tables, links, photos, and
+   two style properties (a photo's width and text alignment).
 
 Photos are placed with Markdown image syntax pointing at an uploaded photo,
 optionally with a width (the share of the text column, as the editor's resize
@@ -39,15 +41,27 @@ MIN_PHOTO_WIDTH: Final[int] = 20  # percent of the text column; the editor's han
 WIDTH: Final[re.Pattern[str]] = re.compile(r'(\d{1,3})%')
 
 ALLOWED_TAGS: Final[set[str]] = {
-    'p', 'br', 'strong', 'em', 's', 'a', 'code', 'pre', 'blockquote', 'hr',
-    'ul', 'ol', 'li', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-    'figure', 'img',
+    'p', 'br', 'div', 'span', 'hr', 'blockquote', 'pre', 'code',
+    'strong', 'b', 'em', 'i', 'u', 's', 'del', 'ins', 'mark', 'small', 'sub', 'sup',
+    'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+    'h3', 'h4', 'h5', 'h6',  # h1 is the thread title and h2 the section headings
+    'table', 'caption', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
+    'a', 'figure', 'figcaption', 'img',
 }
+# Only these two properties survive in a style attribute (see filter_style_properties):
+# a photo's width, and text alignment.
+STYLED_TAGS: Final[set[str]] = {'p', 'div', 'span', 'h3', 'h4', 'h5', 'h6', 'figure', 'table', 'th', 'td', 'blockquote'}
+ALLOWED_STYLE_PROPERTIES: Final[set[str]] = {'width', 'text-align'}
 ALLOWED_ATTRIBUTES: Final[dict[str, set[str]]] = {
-    'a': {'href', 'title'},
-    'ol': {'start'},
-    'img': {'src', 'srcset', 'sizes', 'width', 'height', 'alt', 'loading', 'decoding', 'data-photo'},
-    'figure': {'style'},  # only ever width: see filter_style_properties
+    tag: attributes | ({'style'} if tag in STYLED_TAGS else set())
+    for tag, attributes in {
+        **{tag: set() for tag in STYLED_TAGS},
+        'a': {'href', 'title'},
+        'ol': {'start', 'type'},
+        'img': {'src', 'srcset', 'sizes', 'width', 'height', 'alt', 'loading', 'decoding', 'data-photo'},
+        'th': {'colspan', 'rowspan', 'scope'},
+        'td': {'colspan', 'rowspan'},
+    }.items()
 }
 ALLOWED_CLASSES: Final[dict[str, set[str]]] = {'a': {'photo'}, 'figure': {'photo'}}
 ALLOWED_URL_SCHEMES: Final[set[str]] = {'http', 'https', 'mailto'}
@@ -80,7 +94,7 @@ def render_body(source: str, photos: Mapping[int, 'Attachment'] | None = None) -
         attributes=ALLOWED_ATTRIBUTES,
         allowed_classes=ALLOWED_CLASSES,
         attribute_filter=_only_uploaded_photos,
-        filter_style_properties={'width'},
+        filter_style_properties=ALLOWED_STYLE_PROPERTIES,
         url_schemes=ALLOWED_URL_SCHEMES,
         link_rel=LINK_REL,
     )
@@ -159,7 +173,8 @@ def _only_uploaded_photos(element: str, attribute: str, value: str) -> str | Non
 
 
 _markdown: Final[MarkdownIt] = (
-    MarkdownIt('commonmark', {'html': False, 'breaks': True})
+    # html: members may write HTML; nh3 above is what makes that safe.
+    MarkdownIt('commonmark', {'html': True, 'breaks': True})
     .enable(['table', 'strikethrough'])
 )
 # {width="60%"} after an image, and nothing else: no attributes on links or code, and no other keys.

@@ -701,9 +701,43 @@ textarea.control { min-height: 11rem; resize: vertical; }
 .post__text a.photo { margin: 0.75rem 0; }
 .post__text .photo a:hover img, .post__text a.photo:hover img { opacity: 0.94; }
 
+/* Tables in a post, and in the editor. */
+.post__text table, .editor__surface table {
+  border-collapse: collapse;
+  width: auto;
+  max-width: 100%;
+  margin: 0 0 1rem;
+  font-size: var(--t-sm);
+}
+.post__text th, .post__text td, .editor__surface th, .editor__surface td {
+  border: 1px solid var(--rule-firm);
+  padding: 0.4rem 0.6rem;
+  vertical-align: top;
+}
+.post__text th, .editor__surface th { background: var(--sunk); font-weight: 700; text-align: left; }
+.post__text caption { caption-side: bottom; padding-top: 0.4rem; color: var(--muted); font-size: var(--t-xs); }
+.post__text table { display: block; overflow-x: auto; }  /* a wide table scrolls instead of stretching the post */
+
 /* --- Visual editor (static/js/editor.js, built from frontend/editor) ------- */
 
 .editor--visual:focus-within { border-color: var(--sign); }
+.editor__tools button[aria-pressed="true"] { background: var(--card); border-color: var(--rule-firm); color: var(--sign); }
+.editor__tools svg { display: block; }
+.editor__separator { width: 1px; align-self: stretch; margin: 0.2rem 0.3rem; background: var(--rule-firm); }
+
+/* Tables while editing: the cell being worked on, and the drag handles between columns. */
+.editor__surface .selectedCell { background: var(--rule); }
+.editor__surface th, .editor__surface td { position: relative; min-width: 4rem; }
+.editor__surface .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 4px;
+  background: var(--sign);
+  cursor: col-resize;
+}
+.editor__surface .tiptap.resize-cursor { cursor: col-resize; }
 .editor__surface .tiptap {
   position: relative;
   min-height: 14rem;

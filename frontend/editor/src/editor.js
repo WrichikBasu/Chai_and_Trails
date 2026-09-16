@@ -10,6 +10,8 @@
 // Insert on it. In the post, a photo's corner can be dragged to resize it.
 
 import { Editor } from '@tiptap/core';
+import { TableKit } from '@tiptap/extension-table';
+import { TextAlign } from '@tiptap/extension-text-align';
 import { Placeholder } from '@tiptap/extensions';
 import StarterKit from '@tiptap/starter-kit';
 
@@ -17,8 +19,8 @@ import { toMarkdown } from './markdown.js';
 import { Photo } from './photo.js';
 import { setUpTray } from './tray.js';
 
-const VISUAL_HINT = 'Select text and use the buttons to format it, or type Markdown shortcuts: '
-  + '**bold**, _italic_, "> " for a quote, "- " for a list.';
+const VISUAL_HINT = 'Select text and use the buttons to format it, align it or add a table, '
+  + 'or type Markdown shortcuts: **bold**, _italic_, "> " for a quote, "- " for a list.';
 
 export function createEditor(element, content = '') {
   return new Editor({
@@ -31,6 +33,8 @@ export function createEditor(element, content = '') {
         heading: { levels: [1, 2, 3] },
       }),
       Placeholder.configure({ placeholder: element.dataset.placeholder || '' }),
+      TextAlign.configure({ types: ['heading', 'paragraph'], alignments: ['left', 'center', 'right'] }),
+      TableKit.configure({ table: { resizable: true, HTMLAttributes: { class: 'post-table' } } }),
       Photo,
     ],
   });
@@ -91,6 +95,43 @@ function start(container) {
   container.querySelectorAll('[data-md]').forEach((button) => {
     button.addEventListener('click', () => (actions[button.dataset.md] || (() => {}))());
   });
+
+  // Alignment: left, centre or right, on the paragraph or heading the cursor is in.
+  container.querySelectorAll('[data-align]').forEach((button) => {
+    button.addEventListener('click', () => editor.chain().focus().setTextAlign(button.dataset.align).run());
+  });
+
+  // Tables: one button inserts one; the rest appear only while the cursor is inside a table.
+  const tableActions = {
+    insert: () => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    'row-after': () => editor.chain().focus().addRowAfter().run(),
+    'column-after': () => editor.chain().focus().addColumnAfter().run(),
+    'delete-row': () => editor.chain().focus().deleteRow().run(),
+    'delete-column': () => editor.chain().focus().deleteColumn().run(),
+    delete: () => editor.chain().focus().deleteTable().run(),
+  };
+  const tableButtons = [...container.querySelectorAll('[data-table]')];
+  tableButtons.forEach((button) => {
+    button.addEventListener('click', () => (tableActions[button.dataset.table] || (() => {}))());
+  });
+
+  // Show which formatting is on, and the table buttons only where they apply.
+  function refreshButtons() {
+    const marks = { bold: 'bold', italic: 'italic', quote: 'blockquote', list: 'bulletList' };
+    container.querySelectorAll('[data-md]').forEach((button) => {
+      const name = marks[button.dataset.md];
+      if (name) { button.setAttribute('aria-pressed', editor.isActive(name) ? 'true' : 'false'); }
+    });
+    container.querySelectorAll('[data-align]').forEach((button) => {
+      button.setAttribute('aria-pressed', editor.isActive({ textAlign: button.dataset.align }) ? 'true' : 'false');
+    });
+    const inTable = editor.isActive('table');
+    tableButtons.forEach((button) => {
+      if (button.dataset.table !== 'insert') { button.hidden = !inTable; }
+    });
+  }
+  editor.on('transaction', refreshButtons);
+  refreshButtons();
 
   // Quote on someone's post: add what they wrote to the end of the reply as a quote.
   if (box.id === 'reply-body') {

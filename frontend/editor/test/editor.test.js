@@ -56,6 +56,38 @@ test('formatting is written out as Markdown the server understands', () => {
   ].join('\n'));
 });
 
+test('aligned text is written out as HTML, which posts allow', () => {
+  const editor = editorWith('<p>Day one.</p><p>Kaza at last</p>');
+  editor.commands.setTextSelection(15);          // in the second paragraph
+  editor.chain().focus().setTextAlign('center').run();
+  assert.equal(markdown(editor), 'Day one.\n\n<p style="text-align: center;">Kaza at last</p>');
+
+  editor.chain().focus().setTextAlign('left').run();  // back to normal: plain Markdown again
+  assert.equal(markdown(editor), 'Day one.\n\nKaza at last');
+});
+
+test('a table is written out as HTML, keeping its header row', () => {
+  const editor = editorWith('');
+  editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run();
+  editor.commands.insertContent('Fuel');
+  const out = markdown(editor);
+  // The column widths TipTap adds (min-width, <colgroup>) are dropped by the server's cleaner.
+  assert.match(out, /^<table class="post-table"[^>]*>/);
+  assert.match(out, /<th[^>]*>\s*<p>Fuel<\/p>\s*<\/th>/);
+  assert.equal((out.match(/<tr>/g) || []).length, 2);
+});
+
+test('an aligned paragraph and a table reopen from the server\'s HTML', () => {
+  const editor = editorWith(
+    '<p style="text-align:center">Kaza at last</p>'
+    + '<table><tbody><tr><th><p>Stage</p></th><td><p>4 h</p></td></tr></tbody></table>',
+  );
+  assert.equal(editor.state.doc.firstChild.attrs.textAlign, 'center');
+  const out = markdown(editor);
+  assert.match(out, /^<p style="text-align: center;">Kaza at last<\/p>/);
+  assert.match(out, /<table[^>]*>[\s\S]*Stage[\s\S]*4 h[\s\S]*<\/table>/);
+});
+
 test('a photo goes in at the cursor, between the paragraphs', () => {
   const editor = editorWith('<p>Day one.</p><p>Day two.</p>');
   editor.commands.setTextSelection(9);  // just after "Day one."

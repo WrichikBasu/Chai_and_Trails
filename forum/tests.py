@@ -521,11 +521,13 @@ class RenderingTests(SimpleTestCase):
     def test_headings_start_below_the_page_headings(self) -> None:
         self.assertEqual(render_body('# Spiti').strip(), '<h3>Spiti</h3>')
 
-    def test_raw_html_is_shown_as_text(self) -> None:
+    def test_html_is_rendered_but_cleaned(self) -> None:
+        # Posts may contain HTML; HtmlInPostsTests covers what survives in detail.
         html = render_body('<script>alert(1)</script> <b onclick="x()">hi</b>')
         self.assertNotIn('<script', html)
-        self.assertNotIn('<b', html)
-        self.assertIn('&lt;script&gt;', html)
+        self.assertNotIn('alert(1)', html)
+        self.assertNotIn('onclick', html)
+        self.assertIn('<b>hi</b>', html)
 
     def test_only_safe_links_become_links(self) -> None:
         html = render_body('[site](https://example.com) [bad](javascript:alert(1)) [data](data:text/html,x)')
@@ -1428,3 +1430,67 @@ class LeftoverPhotoTests(TestCase):
         self.client.force_login(self.member)
         page = self.client.post(self.thread.get_absolute_url(), {'body': '', 'draft': self.draft}).content.decode()
         self.assertIn(f'name="draft" value="{self.draft}"', page)
+class HtmlInPostsTests(SimpleTestCase):
+    """Posts may contain HTML; nh3's allowlist is what makes that safe."""
+
+    def test_formatting_html_is_kept(self) -> None:
+        html = render_body('<b>bold</b>, <u>underlined</u>, <mark>marked</mark> and <sup>up</sup>')
+        for tag in ['<b>bold</b>', '<u>underlined</u>', '<mark>marked</mark>', '<sup>up</sup>']:
+            self.assertIn(tag, html)
+
+    def test_alignment_survives(self) -> None:
+        # Exactly what the editor sends for a centred paragraph.
+        self.assertIn('<p style="text-align:center">Kaza at last</p>',
+                      render_body('<p style="text-align: center;">Kaza at last</p>'))
+
+    def test_the_editors_table_is_kept_and_tidied(self) -> None:
+        editor_output = (
+            '<table class="post-table" style="min-width: 50px;"><colgroup><col style="min-width: 25px;"></colgroup>'
+            '<tbody><tr><th colspan="1" rowspan="1"><p>Stage</p></th><td colspan="2"><p>4 h</p></td></tr></tbody></table>'
+        )
+        html = render_body(editor_output)
+        self.assertIn('<th colspan="1" rowspan="1"><p>Stage</p></th>', html)
+        self.assertIn('<td colspan="2"><p>4 h</p></td>', html)
+        self.assertNotIn('colgroup', html)        # column widths are the editor's business
+        self.assertNotIn('min-width', html)
+        self.assertNotIn('post-table', html)      # the stylesheet styles post tables already
+
+    def test_markdown_tables_still_work(self) -> None:
+        html = render_body('| Stage | Hours |\n|---|---|\n| Gramphu | 4 |')
+        self.assertIn('<th>Stage</th>', html)
+        self.assertIn('<td>Gramphu</td>', html)
+
+    def test_scripts_and_styles_go_with_their_contents(self) -> None:
+        html = render_body('before<script>alert(1)</script><style>body{display:none}</style>after')
+        self.assertNotIn('alert(1)', html)
+        self.assertNotIn('display:none', html)
+        self.assertIn('beforeafter', html)
+
+    def test_dangerous_attributes_and_tags_are_removed(self) -> None:
+        html = render_body(
+            '<a href="javascript:alert(1)">bad</a>'
+            '<a href="https://example.com" onclick="steal()">ok</a>'
+            '<iframe src="https://example.com"></iframe>'
+            '<form action="/x"><input name="card"><button>Send</button></form>'
+            '<div onmouseover="x()">hover</div>',
+        )
+        self.assertNotRegex(html, r'<[^>]*\bon\w+=')
+        self.assertNotIn('javascript:', html)
+        self.assertNotIn('<iframe', html)
+        self.assertNotIn('<input', html)
+        self.assertIn('<a href="https://example.com" rel="nofollow ugc noopener noreferrer">ok</a>', html)
+        self.assertIn('<div>hover</div>', html)
+
+    def test_only_width_and_alignment_survive_in_a_style(self) -> None:
+        html = render_body('<div style="position:fixed;top:0;opacity:0;width:50%;text-align:right">boxed</div>')
+        self.assertIn('<div style="width:50%;text-align:right">boxed</div>', html)
+
+    def test_outside_images_still_cannot_load(self) -> None:
+        html = render_body('<img src="https://evil.example/track.png" alt="tracker">')
+        self.assertNotIn('evil.example', html)
+
+    def test_headings_above_h3_are_dropped_but_their_words_stay(self) -> None:
+        html = render_body('<h1>Shouting</h1><h3>Fine</h3>')
+        self.assertNotIn('<h1', html)
+        self.assertIn('Shouting', html)
+        self.assertIn('<h3>Fine</h3>', html)

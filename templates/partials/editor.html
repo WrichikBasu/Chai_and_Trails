@@ -1,7 +1,9 @@
+{% load static %}
 <div class="field">
   <label for="{{ field.id_for_label }}"{% if hide_label %} class="only-screenreader"{% endif %}>{{ field.label }}</label>
-  {# editor.js turns this into a visual editor that writes Markdown into the text box below it. #}
-  {# Without JavaScript the text box stays, and the buttons wrap text in Markdown (site.js). #}
+  {# editor.js turns this into a visual editor that writes Markdown (with HTML where Markdown #}
+  {# can't say it: alignment and tables) into the text box below it. Without JavaScript the #}
+  {# text box stays, and the first few buttons wrap text in Markdown (site.js). #}
   <div class="editor" data-visual-editor>
     <div class="editor__tools" role="toolbar" aria-label="Formatting">
       <button type="button" title="Bold" data-md="bold"><strong>B</strong></button>
@@ -9,6 +11,24 @@
       <button type="button" title="Link" data-md="link">Link</button>
       <button type="button" title="Quote" data-md="quote">Quote</button>
       <button type="button" title="List" data-md="list">List</button>
+      <span class="editor__separator" aria-hidden="true"></span>
+      <button type="button" title="Align left" aria-label="Align left" data-align="left">
+        <svg width="16" height="14" viewBox="0 0 16 14" aria-hidden="true" focusable="false"><path d="M0 1h16M0 5h10M0 9h16M0 13h10" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+      </button>
+      <button type="button" title="Centre" aria-label="Centre" data-align="center">
+        <svg width="16" height="14" viewBox="0 0 16 14" aria-hidden="true" focusable="false"><path d="M0 1h16M3 5h10M0 9h16M3 13h10" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+      </button>
+      <button type="button" title="Align right" aria-label="Align right" data-align="right">
+        <svg width="16" height="14" viewBox="0 0 16 14" aria-hidden="true" focusable="false"><path d="M0 1h16M6 5h10M0 9h16M6 13h10" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+      </button>
+      <span class="editor__separator" aria-hidden="true"></span>
+      <button type="button" title="Insert a table" data-table="insert">Table</button>
+      {# These appear only while the cursor is inside a table (editor.js). #}
+      <button type="button" title="Add a row below" data-table="row-after" hidden>+ Row</button>
+      <button type="button" title="Add a column to the right" data-table="column-after" hidden>+ Column</button>
+      <button type="button" title="Delete this row" data-table="delete-row" hidden>&minus; Row</button>
+      <button type="button" title="Delete this column" data-table="delete-column" hidden>&minus; Column</button>
+      <button type="button" title="Delete the table" data-table="delete" hidden>Delete table</button>
     </div>
     {{ field }}
     {# After a failed submit: the post so far, rendered to HTML (and cleaned), for the visual editor to reopen. #}
