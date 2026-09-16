@@ -20,6 +20,7 @@
       {# multipart: without it the browser sends only the photos' file names, not the files. #}
       <form method="post" action="{% url 'new_thread' %}" enctype="multipart/form-data">
         {% csrf_token %}
+        {{ form.draft }}{# which draft these photos belong to #}
         {% if form.non_field_errors %}
           <ul class="errors errors--form">{% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}</ul>
         {% endif %}

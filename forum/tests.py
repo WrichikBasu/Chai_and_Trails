@@ -1320,12 +1320,14 @@ class CameraPhotoUploadTests(TestCase):
 
 
 class LeftoverPhotoTests(TestCase):
-    """Posting empties the tray: photos uploaded but not used are deleted, files and all."""
+    """Posting clears up after its own draft: photos from that editor that went unused."""
 
     media_root: str
     member: User
     other: User
     thread: Thread
+    draft = 'a' * 32       # what the hidden field in one tab's form holds
+    other_draft = 'b' * 32  # another tab, another draft
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -1341,52 +1343,88 @@ class LeftoverPhotoTests(TestCase):
         cls.other = User.objects.create_user('tenzin')
         cls.thread = start_thread(Forum.objects.get(slug='himalaya-and-ladakh'), cls.member, 'Spiti in June', 'Four days.')
 
-    def waiting_photo(self, member: User | None = None) -> Attachment:
+    def waiting_photo(self, member: User | None = None, draft: str = draft) -> Attachment:
         # Big enough to get its smaller copies too, so the test can check those files as well.
-        return save_photo(member or self.member, prepare_photo(upload('IMG.jpg', photo_bytes(size=(2000, 1500)))))
+        photo = prepare_photo(upload('IMG.jpg', photo_bytes(size=(2000, 1500))))
+        return save_photo(member or self.member, photo, draft=draft)
 
-    def test_replying_keeps_the_placed_photo_and_deletes_the_rest(self) -> None:
+    def reply(self, body: str, draft: str = draft) -> HttpResponse:
+        self.client.force_login(self.member)
+        with self.captureOnCommitCallbacks(execute=True):  # files go once the change commits
+            return self.client.post(self.thread.get_absolute_url(), {'body': body, 'draft': draft})
+
+    def test_replying_keeps_the_placed_photo_and_deletes_this_drafts_leftovers(self) -> None:
         placed, leftover = self.waiting_photo(), self.waiting_photo()
         leftover_files = [Path(stored.path) for stored in (leftover.file, leftover.thumbnail_800)]
-        self.client.force_login(self.member)
 
-        with self.captureOnCommitCallbacks(execute=True):
-            self.client.post(self.thread.get_absolute_url(), {'body': f'Here it is.\n\n![a](attachment:{placed.pk})'})
+        self.reply(f'Here it is.\n\n![a](attachment:{placed.pk})')
 
         placed.refresh_from_db()
         self.assertEqual(placed.post, Post.objects.latest('created_at'))
         self.assertFalse(Attachment.objects.filter(pk=leftover.pk).exists())
         self.assertFalse(any(path.exists() for path in leftover_files))
-        self.assertEqual(waiting_photos(self.member), [])
 
-    def test_starting_a_thread_empties_the_tray_too(self) -> None:
-        leftover = self.waiting_photo()
+    def test_another_tabs_draft_is_left_alone(self) -> None:
+        mine, elsewhere = self.waiting_photo(), self.waiting_photo(draft=self.other_draft)
+        self.reply('Just words.')
+        self.assertFalse(Attachment.objects.filter(pk=mine.pk).exists())
+        self.assertTrue(Attachment.objects.filter(pk=elsewhere.pk).exists())
+        self.assertTrue(Path(elsewhere.file.path).exists())
+        self.assertEqual(waiting_photos(self.member), [elsewhere])  # still in the tray
+
+    def test_a_post_without_a_draft_key_deletes_nothing(self) -> None:
+        # No JavaScript, so no draft: photos sent with the form are attached, and nothing is tidied.
+        waiting = self.waiting_photo()
+        self.reply('Just words.', draft='')
+        self.assertTrue(Attachment.objects.filter(pk=waiting.pk).exists())
+
+    def test_starting_a_thread_clears_its_own_draft(self) -> None:
+        leftover, elsewhere = self.waiting_photo(), self.waiting_photo(draft=self.other_draft)
         self.client.force_login(self.member)
         with self.captureOnCommitCallbacks(execute=True):
             self.client.post(reverse('new_thread'), {
-                'forum': Forum.objects.get(slug='himalaya-and-ladakh').pk, 'title': 'Kaza in July', 'body': 'No photos.',
+                'forum': Forum.objects.get(slug='himalaya-and-ladakh').pk,
+                'title': 'Kaza in July', 'body': 'No photos.', 'draft': self.draft,
             })
         self.assertFalse(Attachment.objects.filter(pk=leftover.pk).exists())
+        self.assertTrue(Attachment.objects.filter(pk=elsewhere.pk).exists())
 
     def test_other_members_photos_are_left_alone(self) -> None:
-        theirs = self.waiting_photo(self.other)
-        self.client.force_login(self.member)
-        self.client.post(self.thread.get_absolute_url(), {'body': 'Nothing of mine.'})
+        theirs = self.waiting_photo(self.other)  # same draft key, different member
+        self.reply('Nothing of mine.')
         self.assertTrue(Attachment.objects.filter(pk=theirs.pk).exists())
-        self.assertEqual(waiting_photos(self.other), [theirs])
 
     def test_a_failed_reply_keeps_the_tray(self) -> None:
         waiting = self.waiting_photo()
-        self.client.force_login(self.member)
-        response = self.client.post(self.thread.get_absolute_url(), {'body': ''})  # required
+        response = self.reply('')  # the body is required
         self.assertContains(response, 'This field is required.')
         self.assertEqual(waiting_photos(self.member), [waiting])
 
     def test_posted_photos_are_never_touched(self) -> None:
         placed = self.waiting_photo()
-        self.client.force_login(self.member)
-        self.client.post(self.thread.get_absolute_url(), {'body': f'![a](attachment:{placed.pk})'})
-        with self.captureOnCommitCallbacks(execute=True):  # a later post must not disturb it
-            self.client.post(self.thread.get_absolute_url(), {'body': 'Plain reply.'})
+        self.reply(f'![a](attachment:{placed.pk})')
+        self.reply('A later reply.')
         placed.refresh_from_db()
         self.assertTrue(Path(placed.file.path).exists())
+
+    def test_uploads_remember_their_draft(self) -> None:
+        self.client.force_login(self.member)
+        for sent, stored in [(self.draft, self.draft), ('not-a-key', ''), ('', '')]:
+            with self.subTest(sent=sent):
+                response = self.client.post(reverse('photo_upload'), {
+                    'photo': upload('IMG.jpg', photo_bytes(size=(600, 400))), 'draft': sent,
+                })
+                self.assertEqual(Attachment.objects.get(pk=response.json()['id']).draft_key, stored)
+
+    def test_the_form_carries_a_draft_key(self) -> None:
+        self.client.force_login(self.member)
+        page = self.client.get(self.thread.get_absolute_url()).content.decode()
+        keys = re.findall(r'name="draft" value="([^"]+)"', page)
+        self.assertEqual(len(keys), 1)
+        self.assertRegex(keys[0], r'^[0-9a-f]{32}$')
+
+    def test_a_failed_submit_keeps_the_same_draft_key(self) -> None:
+        # Otherwise the photos uploaded before the failure would belong to a draft that no longer exists.
+        self.client.force_login(self.member)
+        page = self.client.post(self.thread.get_absolute_url(), {'body': '', 'draft': self.draft}).content.decode()
+        self.assertIn(f'name="draft" value="{self.draft}"', page)

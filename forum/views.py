@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, ListView, View
 
-from .forms import MAX_PHOTOS, NewThreadForm, RegistrationForm, ReplyForm
+from .forms import MAX_PHOTOS, NewThreadForm, RegistrationForm, ReplyForm, draft_key
 from .models import Attachment, Category, Forum, Post, Thread, User
 from .photos import MAX_UPLOAD_BYTES, prepare_photo
 from .posting import add_reply, discard_photos, save_photo, start_thread, waiting_photos
@@ -144,7 +144,7 @@ class ThreadView(PhotoEditorMixin, ElidedPagesMixin, ListView):
         form = ReplyForm(request.POST, request.FILES)  # the text from the body; photos from the upload parts
         if form.is_valid():
             data = form.cleaned_data
-            post = add_reply(self.thread, cast(User, request.user), data['body'], data['photos'])
+            post = add_reply(self.thread, cast(User, request.user), data['body'], data['photos'], data['draft'])
             return redirect(self.thread.latest_post_url(post))
         # Show the page again with the errors, and what they typed still in the box.
         self.object_list = self.get_queryset()
@@ -176,7 +176,7 @@ class NewThreadView(LoginRequiredMixin, PhotoEditorMixin, CreateView):
         # Instead of form.save(): start_thread also writes the opening post and updates the counts.
         data = form.cleaned_data
         self.object = start_thread(
-            data['forum'], cast(User, self.request.user), data['title'], data['body'], data['photos'],
+            data['forum'], cast(User, self.request.user), data['title'], data['body'], data['photos'], data['draft'],
         )
         return redirect(self.object)
 
@@ -203,7 +203,7 @@ class PhotoUploadView(LoginRequiredMixin, View):
             photo = prepare_photo(upload)
         except ValidationError as error:
             return JsonResponse({'error': error.messages[0]}, status=400)
-        attachment = save_photo(member, photo)
+        attachment = save_photo(member, photo, draft=draft_key(request.POST.get('draft', '')))
         return JsonResponse({
             'id': attachment.pk,
             'markdown': photo_markdown(attachment.pk),

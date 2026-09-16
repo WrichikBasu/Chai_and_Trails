@@ -17,6 +17,7 @@ export function setUpTray(tray, editor, csrfToken) {
   const empty = tray.querySelector('[data-tray-empty]');
   const errors = tray.querySelector('[data-tray-errors]');
   const uploadUrl = tray.dataset.uploadUrl;
+  const draft = tray.closest('form').querySelector('input[name="draft"]');
   const maxMb = Number(tray.dataset.maxMb) || 15;  // the server's limit, so the two never drift apart
   let uploading = 0;
 
@@ -122,6 +123,8 @@ export function setUpTray(tray, editor, csrfToken) {
     try {
       const data = new FormData();
       data.append('photo', file);
+      // Which draft this belongs to, so posting deletes only this tab's unused photos.
+      data.append('draft', draft ? draft.value : '');
       const response = await post(uploadUrl, data);
       const body = await response.json().catch(() => ({}));
       if (!response.ok) { throw new Error(body.error || `The upload failed (${response.status}).`); }

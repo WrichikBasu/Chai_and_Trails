@@ -222,6 +222,9 @@ class Attachment(models.Model):
     width = models.PositiveIntegerField(null=True, editable=False)
     height = models.PositiveIntegerField(null=True, editable=False)
     size = models.PositiveIntegerField(editable=False)  # bytes, of the full-size file
+    # Which draft this was uploaded from: one editor, in one tab. Posting that draft deletes
+    # the photos from it that were not used, and leaves other drafts' photos alone.
+    draft_key = models.CharField(max_length=32, blank=True, editable=False, db_index=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

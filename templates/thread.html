@@ -36,6 +36,7 @@
       {# POST to this same page: ThreadView.post() saves the reply. #}
       <form method="post" action="{{ request.get_full_path }}" enctype="multipart/form-data">
         {% csrf_token %}
+        {{ form.draft }}{# which draft these photos belong to #}
         {% include "partials/editor.html" with field=form.body hide_label=True %}
         {% include "partials/photo_tray.html" %}
         {# Without JavaScript, photos come through this plain input and go at the end of the post. #}

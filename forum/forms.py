@@ -1,6 +1,8 @@
+import re
 from collections.abc import Iterator
 from functools import cached_property
 from typing import Any, Final
+from uuid import uuid4
 
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
@@ -11,6 +13,7 @@ from .photos import MAX_UPLOAD_BYTES, PreparedPhoto, prepare_photo
 from .rendering import photo_ids
 
 POST_MAX_LENGTH: Final[int] = 20_000
+DRAFT_KEY: Final[re.Pattern[str]] = re.compile(r'[0-9a-f]{32}')
 MAX_PHOTOS: Final[int] = 10
 PHOTOS_HINT: Final[str] = (
     f'Up to {MAX_PHOTOS} photos: JPEG, PNG or WebP, {MAX_UPLOAD_BYTES // (1024 * 1024)} MB each. '
@@ -127,6 +130,17 @@ class PhotosField(forms.FileField):
         return photos
 
 
+def draft_field() -> forms.CharField:
+    """Identifies one draft: this editor, in this tab. The photos uploaded from it carry the
+    same key, so posting can delete the ones that went unused without touching other drafts."""
+    return forms.CharField(required=False, max_length=32, widget=forms.HiddenInput)
+
+
+def draft_key(value: str) -> str:
+    """The key if it looks like one of ours, otherwise nothing: it comes from the page."""
+    return value if DRAFT_KEY.fullmatch(value or '') else ''
+
+
 def body_field() -> forms.CharField:
     return forms.CharField(
         max_length=POST_MAX_LENGTH,
@@ -135,8 +149,14 @@ def body_field() -> forms.CharField:
     )
 
 
-class PhotoLimitMixin(forms.BaseForm):
-    """No more than MAX_PHOTOS per post, counting photos placed in the text and any sent with the form."""
+class PostFormMixin(forms.BaseForm):
+    """Shared by both post forms: the draft key, and the limit on photos per post."""
+
+    def prepare_draft(self) -> None:
+        self.fields['draft'].initial = uuid4().hex  # a fresh key for each new draft
+
+    def clean_draft(self) -> str:
+        return draft_key(self.cleaned_data.get('draft', ''))
 
     def clean(self) -> dict[str, Any]:
         cleaned: dict[str, Any] = super().clean()
@@ -146,11 +166,12 @@ class PhotoLimitMixin(forms.BaseForm):
         return cleaned
 
 
-class NewThreadForm(PhotoLimitMixin, forms.ModelForm):
+class NewThreadForm(PostFormMixin, forms.ModelForm):
     """A ModelForm for Thread's own fields, plus the opening post's text."""
 
     body = body_field()
     photos = PhotosField()
+    draft = draft_field()
 
     class Meta:
         model = Thread
@@ -167,6 +188,7 @@ class NewThreadForm(PhotoLimitMixin, forms.ModelForm):
         self.fields['body'].label = 'Post'
         self.fields['body'].widget.attrs['placeholder'] = 'Dates, vehicle, budget, what you have already booked.'
         style_controls(self)
+        self.prepare_draft()
 
     @cached_property
     def forum_menu(self) -> list[tuple[int | str, str]]:
@@ -174,9 +196,10 @@ class NewThreadForm(PhotoLimitMixin, forms.ModelForm):
         return [('', 'Choose a section'), *forum_choices()]
 
 
-class ReplyForm(PhotoLimitMixin, forms.Form):
+class ReplyForm(PostFormMixin, forms.Form):
     body = body_field()
     photos = PhotosField()
+    draft = draft_field()
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -186,3 +209,4 @@ class ReplyForm(PhotoLimitMixin, forms.Form):
             'placeholder': 'Add what you know: road condition, fuel stops, where you stayed, what it cost.',
         })
         style_controls(self)
+        self.prepare_draft()

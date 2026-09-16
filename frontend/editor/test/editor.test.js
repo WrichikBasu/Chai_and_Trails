@@ -132,6 +132,7 @@ test("the server's HTML reopens in the editor with photos and widths", () => {
 function trayFor(editor, items = '') {
   const form = document.createElement('form');
   form.innerHTML = `
+    <input type="hidden" name="draft" value="0123456789abcdef0123456789abcdef">
     <section data-photo-tray data-upload-url="/photos/upload/" data-max-mb="10" hidden>
       <button type="button" data-tray-add>Add photos</button>
       <input type="file" hidden data-tray-input>
@@ -205,6 +206,24 @@ test('a camera file with no type still uploads', async () => {
   assert.equal(sent, 1);
   assert.equal(tray.querySelector('.tray__item').dataset.photo, '77');
   assert.equal(tray.querySelectorAll('[data-tray-errors] li').length, 0);
+});
+
+test('an upload says which draft it belongs to', async () => {
+  // Posting deletes the unused photos of this draft only, so each upload carries its key.
+  const editor = editorWith('');
+  let draftSent = null;
+  globalThis.fetch = async (url, options) => {
+    draftSent = options.body.get('draft');
+    return new Response(JSON.stringify({ id: 9, preview_url: '/a-800.jpg', display_url: '/a-1600.jpg', remove_url: '/photos/9/remove/' }), { status: 201 });
+  };
+  URL.createObjectURL = () => 'blob:local';
+  URL.revokeObjectURL = () => {};
+  const tray = trayFor(editor);
+  const input = tray.querySelector('[data-tray-input]');
+  Object.defineProperty(input, 'files', { value: [new window.File(['x'], 'a.jpg', { type: 'image/jpeg' })], configurable: true });
+  input.dispatchEvent(new Event('change'));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(draftSent, '0123456789abcdef0123456789abcdef');
 });
 
 test('a refused upload is reported and leaves nothing in the tray', async () => {
