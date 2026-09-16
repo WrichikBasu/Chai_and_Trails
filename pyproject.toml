@@ -6,6 +6,7 @@ dependencies = [
     "anyascii>=0.3.3",
     "django[argon2]>=6.1.1",
     "markdown-it-py>=4.2.0",
+    "mdit-py-plugins>=0.6.1",
     "nh3>=0.3.7",
     "pillow>=12.3.0",
     "psycopg[binary,pool]>=3.3.5",
