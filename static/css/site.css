@@ -208,7 +208,10 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   color: #fff;
 }
 .hunt input::placeholder { color: #a9c6ba; }
-.hunt input:focus { background: #fff; color: var(--ink); border-color: var(--milestone); }
+/* Focused, the box leaves the masthead's green for a page surface. Both colours come
+   from the theme: a hard-coded white box would put the night theme's near-white text
+   on white, which is how this was written at first and why nothing could be read. */
+.hunt input:focus { background: var(--card); color: var(--ink); border-color: var(--milestone); }
 .hunt input:focus::placeholder { color: var(--faint); }
 .hunt button {
   position: absolute;
@@ -220,7 +223,8 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   cursor: pointer;
   border-radius: 3px;
 }
-.hunt input:focus + button { color: var(--sign); }
+/* The magnifier sits on that surface too, so it takes a colour that reads on both. */
+.hunt input:focus + button { color: var(--link); }
 
 /* --- 5. Primary nav ----------------------------------------------------- */
 
