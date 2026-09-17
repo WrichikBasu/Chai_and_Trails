@@ -15,6 +15,8 @@ urlpatterns: list[URLPattern] = [
     path('photos/upload/', views.PhotoUploadView.as_view(), name='photo_upload'),
     path('photos/<int:pk>/remove/', views.PhotoRemoveView.as_view(), name='photo_remove'),
     path('members/', TemplateView.as_view(template_name='members.html'), name='members'),
+    # Usernames allow @ . + - _ , which <slug:…> would refuse, so match the whole segment.
+    path('member/<str:username>/', views.MemberView.as_view(), name='member'),
     path('register/', views.register, name='register'),
     path(
         'login/',

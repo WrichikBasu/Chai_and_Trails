@@ -25,11 +25,11 @@
   <div class="node__last last">
     {% with post=forum.last_post %}
       {% if post %}
-        <span class="avatar tone-{{ post.author.avatar_tone }}" aria-hidden="true">{{ post.author.display_name|first }}</span>
+        {% include "partials/avatar.html" with member=post.author %}
         <span>
           <a class="last__title" href="{{ post.thread.get_absolute_url }}?page=last#post-{{ post.pk }}">{{ post.thread.title }}</a>
           <span class="last__meta">
-            <a href="profile.html">{{ post.author.display_name }}</a> &middot; {{ post.created_at|forum_time }}
+            <a href="{{ post.author.get_absolute_url }}">{{ post.author.display_name }}</a> &middot; {{ post.created_at|forum_time }}
           </span>
         </span>
       {% else %}

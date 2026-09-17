@@ -5,14 +5,14 @@ from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import F, Prefetch, Q, QuerySet
+from django.db.models import Count, F, OuterRef, Prefetch, Q, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
-from django.views.generic import CreateView, ListView, View
+from django.views.generic import CreateView, DetailView, ListView, View
 
-from .forms import MAX_PHOTOS, NewThreadForm, RegistrationForm, ReplyForm, draft_key
+from .forms import MAX_PHOTOS, AvatarForm, NewThreadForm, RegistrationForm, ReplyForm, draft_key
 from .models import Attachment, Category, Forum, Post, Thread, User
 from .photos import MAX_UPLOAD_BYTES, prepare_photo
 from .posting import add_reply, discard_photos, save_photo, start_thread, waiting_photos
@@ -21,6 +21,9 @@ from .rendering import photo_markdown, render_body
 THREADS_PER_PAGE: Final[int] = 20
 POSTS_PER_PAGE: Final[int] = 20
 LATEST_TRIP_LOGS: Final[int] = 4
+PROFILE_POSTS: Final[int] = 10
+PROFILE_THREADS: Final[int] = 5
+PROFILE_PHOTOS: Final[int] = 6
 # Photos a member has uploaded that no post has claimed yet. Enough for a long trip report
 # in progress, few enough that the upload endpoint can't be used as free file hosting.
 MAX_WAITING_PHOTOS: Final[int] = 30
@@ -179,6 +182,71 @@ class NewThreadView(LoginRequiredMixin, PhotoEditorMixin, CreateView):
             data['forum'], cast(User, self.request.user), data['title'], data['body'], data['photos'], data['draft'],
         )
         return redirect(self.object)
+
+
+class MemberView(DetailView):
+    """A member's profile: who they are, and what they have posted lately.
+
+    Looking at your own also gives you the profile photo form, which posts back here.
+    """
+
+    template_name = 'profile.html'
+    context_object_name = 'member'
+    slug_field = 'username'
+    slug_url_kwarg = 'username'
+    # Closed accounts are hidden rather than shown as empty profiles.
+    queryset = User.objects.filter(is_active=True)
+
+    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        """Change or remove the profile photo. Only the member's own."""
+        self.object = self.get_object()
+        if not request.user.is_authenticated:
+            return redirect_to_login(request.get_full_path())
+        if request.user != self.object:
+            raise PermissionDenied('You can only change your own profile photo.')
+
+        if 'remove' in request.POST:
+            self.object.set_avatar(None)
+            return redirect(self.object)
+        form = AvatarForm(request.POST, request.FILES)
+        if form.is_valid():
+            self.object.set_avatar(form.cleaned_data['avatar'])
+            # Redirect rather than render, so reloading the profile doesn't offer to send the photo again.
+            return redirect(self.object)
+        return self.render_to_response(self.get_context_data(avatar_form=form))
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        member = self.object
+        is_owner = self.request.user == member
+        context['is_owner'] = is_owner
+        if is_owner:
+            context.setdefault('avatar_form', AvatarForm())
+        # How many posts come before each one in its thread, so the link can name the right page.
+        earlier = (
+            Post.objects.filter(thread=OuterRef('thread'), created_at__lt=OuterRef('created_at'))
+            .values('thread').annotate(total=Count('pk')).values('total')
+        )
+        posts = list(
+            member.posts.select_related('thread', 'thread__forum')
+            .annotate(earlier=Subquery(earlier))
+            .order_by('-created_at')[:PROFILE_POSTS]
+        )
+        for post in posts:
+            page = (post.earlier or 0) // POSTS_PER_PAGE + 1
+            post.url = f'{post.thread.get_absolute_url()}{f"?page={page}" if page > 1 else ""}#post-{post.pk}'
+
+        context.update(
+            breadcrumbs=[{'title': 'Members', 'url': reverse('members')}],
+            posts=posts,
+            threads=member.threads.select_related('forum').order_by('-created_at')[:PROFILE_THREADS],
+            thread_count=member.threads.count(),
+            photos=(
+                Attachment.objects.filter(uploader=member, post__isnull=False)
+                .select_related('post__thread').order_by('-created_at')[:PROFILE_PHOTOS]
+            ),
+        )
+        return context
 
 
 class PhotoUploadView(LoginRequiredMixin, View):

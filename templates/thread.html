@@ -11,7 +11,7 @@
   <div class="thread-head__meta">
     {% if thread.is_pinned %}<span class="chip chip--pinned">Pinned</span>{% endif %}
     {% if thread.is_closed %}<span class="chip chip--closed">Closed</span>{% endif %}
-    <span>Started by <a href="profile.html">{{ thread.author.display_name }}</a> on {{ thread.created_at|date:"j M Y" }}</span>
+    <span>Started by <a href="{{ thread.author.get_absolute_url }}">{{ thread.author.display_name }}</a> on {{ thread.created_at|date:"j M Y" }}</span>
     <span>{{ thread.reply_count|intcomma }} repl{{ thread.reply_count|pluralize:"y,ies" }}</span>
     <span>{{ thread.view_count|compact_count }} view{{ thread.view_count|pluralize }}</span>
     {% if not thread.is_closed %}<a href="#reply">Jump to reply box</a>{% endif %}

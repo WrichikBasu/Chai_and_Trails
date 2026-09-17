@@ -7,9 +7,10 @@ from uuid import uuid4
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.core.exceptions import ValidationError
+from django.core.files.base import ContentFile
 
 from .models import Category, Forum, Thread, User
-from .photos import MAX_UPLOAD_BYTES, PreparedPhoto, prepare_photo
+from .photos import MAX_UPLOAD_BYTES, PreparedPhoto, prepare_avatar, prepare_photo
 from .rendering import photo_ids
 
 POST_MAX_LENGTH: Final[int] = 20_000
@@ -129,6 +130,30 @@ class PhotosField(forms.FileField):
         if errors:
             raise ValidationError(errors)
         return photos
+
+
+class AvatarForm(forms.Form):
+    """The profile photo a member picks for themselves, cleaned before it is stored."""
+
+    avatar = forms.FileField(
+        label='Profile photo',
+        error_messages={'required': 'Choose a photo to use.'},
+        help_text=(
+            f'JPEG, PNG or WebP, up to {MAX_UPLOAD_BYTES // (1024 * 1024)} MB. The middle is cut out as a square. '
+            'Location and camera details are removed before anything is stored.'
+        ),
+        widget=forms.FileInput(attrs={
+            'accept': 'image/jpeg,image/png,image/webp,.jpg,.JPG,.jpeg,.JPEG,.png,.PNG,.webp,.WEBP',
+            'data-avatar-input': '',  # site.js shows what they picked before they save it
+        }),
+    )
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        style_controls(self)
+
+    def clean_avatar(self) -> ContentFile:
+        return prepare_avatar(self.cleaned_data['avatar'])
 
 
 def draft_field() -> forms.CharField:

@@ -82,7 +82,7 @@
           <ul class="mini">
             {% for thread in trip_logs %}
               <li>
-                <span class="avatar tone-{{ thread.author.avatar_tone }} avatar--sm" aria-hidden="true">{{ thread.author.display_name|first }}</span>
+                {% include "partials/avatar.html" with member=thread.author size="avatar--sm" %}
                 <span>
                   <a class="mini__title" href="{{ thread.get_absolute_url }}">{{ thread.title }}</a>
                   <span class="mini__meta">{{ thread.author.display_name }} &middot; {{ thread.created_at|forum_time }}</span>

@@ -277,7 +277,9 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
 
 /* --- 7. Page frame ------------------------------------------------------ */
 
-.page { padding: 1.5rem 0 3rem; }
+/* padding-block, not the shorthand: the side gutter belongs to .shell, and a
+   shorthand here would set it back to zero on every page narrower than --shell. */
+.page { padding-block: 1.5rem 3rem; }
 
 .layout { display: grid; gap: 1.5rem; }
 .layout--split { grid-template-columns: minmax(0, 1fr) 20rem; }
@@ -451,6 +453,8 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
 .avatar--lg { width: 4.5rem; height: 4.5rem; font-size: 2rem; border-radius: 7px; }
 .avatar--sm { width: 1.6rem; height: 1.6rem; font-size: 0.75rem; border-radius: 4px; }
 .avatar:hover { text-decoration: none; }
+/* A member's own photo. It is stored square, and cover keeps it square whatever arrives. */
+.avatar--photo { display: block; object-fit: cover; background: var(--sunk); }
 
 .tone-1 { background: #0c5c43; }
 .tone-2 { background: #9c4a21; }
@@ -922,6 +926,60 @@ textarea.control { min-height: 11rem; resize: vertical; }
 .mini__meta { font-size: var(--t-xs); color: var(--faint); }
 
 .faces { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+/* --- Member profile ----------------------------------------------------- */
+
+.profile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.35rem 1.1rem;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--rule);
+}
+.profile .avatar--lg { width: 5.5rem; height: 5.5rem; font-size: 2.4rem; }
+.profile__who h1 { font-size: var(--t-xl); margin: 0; }
+.profile__rank { color: var(--chai); font-size: var(--t-sm); font-weight: 700; margin: 0.1rem 0 0; }
+.profile__line { color: var(--muted); font-size: var(--t-sm); margin: 0.35rem 0 0; }
+.profile__tally { display: flex; gap: 1.75rem; margin: 0; }
+.profile__tally div { display: grid; gap: 0.1rem; text-align: right; }
+.profile__tally dt { font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); }
+.profile__tally dd {
+  margin: 0;
+  font-family: var(--slab);
+  font-size: var(--t-lg);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.profile__excerpt { display: block; color: var(--muted); font-size: var(--t-sm); margin-top: 0.25rem; }
+
+/* Changing your own photo: shut until asked for, and it spans the header when open. */
+.avatar-edit { grid-column: 1 / -1; margin-top: 0.75rem; }
+.avatar-edit summary {
+  display: inline-block;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--t-sm);
+  font-weight: 700;
+}
+.avatar-edit summary:hover { color: var(--chai); }
+.avatar-edit form { max-width: 32rem; margin-top: 0.75rem; }
+.avatar-edit .field { margin-bottom: 0.75rem; }
+.avatar-edit__acts { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.mini--posts li { align-items: start; }
+
+/* A member's latest photos, each linking to the post it appears in. */
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: 0.5rem; list-style: none; margin: 0; padding: 0; }
+.gallery a { display: block; overflow: hidden; border-radius: var(--r-ctl); background: var(--sunk); }
+.gallery img { display: block; width: 100%; height: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.gallery a:hover img { opacity: 0.92; }
+
+@media (max-width: 40rem) {
+  .profile { grid-template-columns: auto minmax(0, 1fr); }
+  .profile__tally { grid-column: 1 / -1; justify-content: space-between; gap: 1rem; }
+  .profile__tally div { text-align: left; }
+}
 
 /* --- 18. Members grid --------------------------------------------------- */
 

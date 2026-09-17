@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% load humanize forum_extras %}
+
+{% block title %}{{ member.display_name }} | Chai &amp; Trails{% endblock %}
+
+{% block description %}{{ member.display_name }} on Chai &amp; Trails: {{ member.post_count|intcomma }} posts{% if member.location %}, riding out of {{ member.location }}{% endif %}.{% endblock %}
+
+{% block header %}{% include "partials/header.html" with active="members" %}{% endblock %}
+
+{% block crumbs %}{% include "partials/crumbs.html" with current=member.display_name %}{% endblock %}
+
+{% block content %}
+<section class="profile">
+  <div class="profile__photo" data-avatar-preview>
+    {% include "partials/avatar.html" with member=member size="avatar--lg" %}
+  </div>
+  <div class="profile__who">
+    <h1>{{ member.display_name }}</h1>
+    <p class="profile__rank">{{ member.rank }}</p>
+    {% if member.location or member.rides %}
+      <p class="profile__line">
+        {% if member.location %}Based in {{ member.location }}{% endif %}
+        {% if member.location and member.rides %} &middot; {% endif %}
+        {% if member.rides %}Rides {{ member.rides }}{% endif %}
+      </p>
+    {% endif %}
+  </div>
+  <dl class="profile__tally">
+    <div><dt>Posts</dt><dd>{{ member.post_count|intcomma }}</dd></div>
+    <div><dt>Threads</dt><dd>{{ thread_count|intcomma }}</dd></div>
+    <div><dt>Joined</dt><dd>{{ member.date_joined|date:"M Y" }}</dd></div>
+  </dl>
+
+  {% if is_owner %}
+    {# Only on your own profile. <details> so it stays out of the way until wanted, without script. #}
+    <details class="avatar-edit"{% if avatar_form.errors %} open{% endif %}>
+      <summary>Change your photo</summary>
+      <form method="post" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+        <div class="field">
+          <label for="{{ avatar_form.avatar.id_for_label }}">{{ avatar_form.avatar.label }}</label>
+          {{ avatar_form.avatar }}
+          {% if avatar_form.avatar.errors %}
+            <ul class="errors">{% for error in avatar_form.avatar.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+          {% endif %}
+          <p class="hint">{{ avatar_form.avatar.help_text }}</p>
+        </div>
+        <div class="avatar-edit__acts">
+          <button class="btn btn--board" type="submit">Save photo</button>
+          {% if member.avatar %}
+            <button class="btn btn--quiet" type="submit" name="remove" value="1">Remove photo</button>
+          {% endif %}
+        </div>
+      </form>
+    </details>
+  {% endif %}
+</section>
+
+<div class="layout layout--split">
+  <div>
+    <section class="block">
+      <div class="block__bar block__bar--plain"><h2>Recent posts</h2></div>
+      {% if posts %}
+        <ul class="mini mini--posts">
+          {% for post in posts %}
+            <li>
+              <span>
+                <a class="mini__title" href="{{ post.url }}">{{ post.thread.title }}</a>
+                <span class="mini__meta">
+                  in <a href="{% url 'forum' post.thread.forum.slug %}">{{ post.thread.forum.title }}</a>
+                  &middot; {{ post.created_at|forum_time }}
+                </span>
+                <span class="profile__excerpt">{{ post.body_html|striptags|truncatewords:32 }}</span>
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="block__body"><p>{{ member.display_name }} hasn't posted yet.</p></div>
+      {% endif %}
+    </section>
+
+    {% if photos %}
+      <section class="block">
+        <div class="block__bar block__bar--plain"><h2>Latest photos</h2></div>
+        <div class="block__body">
+          <ul class="gallery">
+            {% for photo in photos %}
+              <li>
+                <a href="{{ photo.post.thread.get_absolute_url }}#post-{{ photo.post_id }}">
+                  <img src="{{ photo.preview_url }}" alt="Photo by {{ member.display_name }} in {{ photo.post.thread.title }}" loading="lazy">
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </section>
+    {% endif %}
+  </div>
+
+  <aside class="side" aria-label="More about this member">
+    <section class="block">
+      <div class="block__bar block__bar--plain"><h2>Threads started</h2></div>
+      {% if threads %}
+        <div class="block__body">
+          <ul class="mini">
+            {% for thread in threads %}
+              <li>
+                <span>
+                  <a class="mini__title" href="{{ thread.get_absolute_url }}">{{ thread.title }}</a>
+                  <span class="mini__meta">
+                    {{ thread.reply_count|intcomma }} repl{{ thread.reply_count|pluralize:"y,ies" }}
+                    &middot; {{ thread.created_at|date:"j M Y" }}
+                  </span>
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% else %}
+        <div class="block__body"><p>No threads started yet.</p></div>
+      {% endif %}
+    </section>
+
+    <section class="block">
+      <div class="block__bar block__bar--plain"><h2>Member details</h2></div>
+      <div class="block__body">
+        <dl class="post__facts">
+          <div><dt>Joined</dt><dd>{{ member.date_joined|date:"j M Y" }}</dd></div>
+          <div><dt>Rank</dt><dd>{{ member.rank }}</dd></div>
+          {% if member.location %}<div><dt>Based in</dt><dd>{{ member.location }}</dd></div>{% endif %}
+          {% if member.rides %}<div><dt>Rides</dt><dd>{{ member.rides }}</dd></div>{% endif %}
+          <div><dt>Posts</dt><dd>{{ member.post_count|intcomma }}</dd></div>
+        </dl>
+      </div>
+    </section>
+  </aside>
+</div>
+{% endblock %}

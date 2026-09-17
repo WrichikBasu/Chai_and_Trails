@@ -1,0 +1,14 @@
+{% comment %}
+A member's face: their profile photo if they have set one, otherwise the first
+letter of their name on their tinted square. Include it with the member and the
+size class the page wants:
+
+  {% include "partials/avatar.html" with member=post.author size="avatar--lg" %}
+
+Both are decoration next to the name they sit beside, so neither is read aloud.
+{% endcomment %}
+{% if member.avatar %}
+  <img class="avatar avatar--photo {{ size }}" src="{{ member.avatar.url }}" alt="" aria-hidden="true" loading="lazy">
+{% else %}
+  <span class="avatar tone-{{ member.avatar_tone }} {{ size }}" aria-hidden="true">{{ member.display_name|first }}</span>
+{% endif %}
