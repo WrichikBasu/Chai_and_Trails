@@ -37,7 +37,7 @@
     <a href="#">Most replies</a>
     <a href="#">Unanswered</a>
   </div>
-  <p style="margin:0;color:var(--muted);font-size:var(--t-sm)">
+  <p class="toolbar__note">
     {{ page_obj.paginator.count|intcomma }} thread{{ page_obj.paginator.count|pluralize }}
     {% if page_obj.paginator.count %}&middot; showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}{% endif %}
   </p>
@@ -46,7 +46,7 @@
 <section class="block">
   <div class="block__bar block__bar--plain">
     <h2>Threads</h2>
-    <a href="whats-new.html">Mark this section read</a>
+    <a href="{% url 'whats_new' %}">What's new everywhere</a>
   </div>
   {% if threads %}
     <ul>
@@ -64,7 +64,7 @@
 {% include "partials/pager.html" %}
 
 <div class="toolbar" id="watch">
-  <p style="margin:0;font-size:var(--t-sm);color:var(--muted)">Get an email when someone posts in {{ forum.title }}.</p>
+  <p class="toolbar__note">Get an email when someone posts in {{ forum.title }}.</p>
   <a class="btn btn--board" href="#watch">Watch this section</a>
 </div>
 {% endblock %}

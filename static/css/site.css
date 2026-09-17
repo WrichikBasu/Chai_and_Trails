@@ -477,6 +477,8 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   border-radius: var(--r-block);
   margin-bottom: 1.25rem;
 }
+/* The line of small print beside a toolbar's filters: how many, or what it is for. */
+.toolbar__note { margin: 0; color: var(--muted); font-size: var(--t-sm); }
 .toolbar__filters { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .toolbar__filters a {
   font-size: var(--t-sm);

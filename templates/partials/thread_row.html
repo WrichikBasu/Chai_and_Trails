@@ -13,6 +13,8 @@
     <p class="thread__meta">
       <a href="{{ thread.author.get_absolute_url }}">{{ thread.author.display_name }}</a>
       started {{ thread.created_at|date:"j M Y" }}
+      {# Which section it is in, for lists that mix them, such as What's new. #}
+      {% if show_forum %}&middot; in <a href="{% url 'forum' thread.forum.slug %}">{{ thread.forum.title }}</a>{% endif %}
     </p>
   </div>
 

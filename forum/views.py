@@ -6,8 +6,11 @@ from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.paginator import InvalidPage, Paginator
 from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, QuerySet, Subquery
-from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect, JsonResponse
+from django.http import (
+    Http404, HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect, JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -232,6 +235,42 @@ class NewThreadView(LoginRequiredMixin, PhotoEditorMixin, CreateView):
             data['forum'], cast(User, self.request.user), data['title'], data['body'], data['photos'], data['draft'],
         )
         return redirect(self.object)
+
+
+def paginate(request: HttpRequest, objects: QuerySet[Any], per_page: int) -> dict[str, Any]:
+    """One page of `objects`, and what the pager partial needs to draw itself.
+
+    This is what ListView does for the pages built on it. ?page=last asks for
+    the newest page without knowing how many there are, and anything else that
+    isn't a real page number is a 404 rather than a silent jump to page 1.
+    """
+    paginator = Paginator(objects, per_page)
+    asked = request.GET.get('page') or 1
+    try:
+        page = paginator.page(paginator.num_pages if asked == 'last' else asked)
+    except InvalidPage as error:
+        raise Http404(f'Invalid page ({asked}): {error}')
+    return {
+        'paginator': paginator,
+        'page_obj': page,
+        'is_paginated': page.has_other_pages(),
+        'page_range': paginator.get_elided_page_range(page.number, on_each_side=2, on_ends=1),
+    }
+
+
+def whats_new(request: HttpRequest) -> HttpResponse:
+    """Threads from every section, the ones posted in most recently first.
+
+    Thread.Meta puts pinned threads at the top, which is right inside a section
+    but not here: this page is about when something was last said, so it orders
+    by that alone, with the id breaking ties between posts at the same instant.
+    """
+    threads = (
+        Thread.objects.select_related('author', 'forum', 'last_post__author')
+        .order_by('-last_posted_at', '-id')
+    )
+    page = paginate(request, threads, THREADS_PER_PAGE)
+    return render(request, 'whats-new.html', {'threads': page['page_obj'].object_list, **page})
 
 
 class MembersView(ElidedPagesMixin, ListView):

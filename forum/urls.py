@@ -13,6 +13,7 @@ urlpatterns: list[URLPattern] = [
     path('new-thread/', views.NewThreadView.as_view(), name='new_thread'),
     path('photos/upload/', views.PhotoUploadView.as_view(), name='photo_upload'),
     path('photos/<int:pk>/remove/', views.PhotoRemoveView.as_view(), name='photo_remove'),
+    path('whats-new/', views.whats_new, name='whats_new'),
     path('members/', views.MembersView.as_view(), name='members'),
     # Usernames allow @ . + - _ , which <slug:…> would refuse, so match the whole segment.
     path('member/<str:username>/', views.MemberView.as_view(), name='member'),

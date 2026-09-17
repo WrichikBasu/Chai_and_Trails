@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}What's new | Chai &amp; Trails{% endblock %}
+
+{% block description %}Threads from every section of Chai &amp; Trails, the most recently posted in first.{% endblock %}
+
+{% block header %}{% include "partials/header.html" with active="whats-new" %}{% endblock %}
+
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>What's new</h1>
+    <p>Threads from every section, the ones posted in most recently first.</p>
+  </div>
+  <div class="pagehead__side">
+    <a class="btn btn--go" href="{% url 'new_thread' %}">Start a thread</a>
+  </div>
+</div>
+
+<div class="toolbar">
+  <p class="toolbar__note">
+    {{ page_obj.paginator.count|intcomma }} thread{{ page_obj.paginator.count|pluralize }}
+    {% if page_obj.paginator.count %}&middot; showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}{% endif %}
+  </p>
+</div>
+
+<section class="block">
+  <div class="block__bar block__bar--plain"><h2>Recent activity</h2></div>
+  {% if threads %}
+    <ul>
+      {% for thread in threads %}
+        {% include "partials/thread_row.html" with show_forum=True %}
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="block__body">
+      <p>Nothing has been posted yet. <a href="{% url 'new_thread' %}">Start the first thread.</a></p>
+    </div>
+  {% endif %}
+</section>
+
+{% include "partials/pager.html" %}
+{% endblock %}

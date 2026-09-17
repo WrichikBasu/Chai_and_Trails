@@ -33,7 +33,7 @@ from .photos import AVATAR_SIZE, MAX_UPLOAD_BYTES, prepare_avatar, prepare_photo
 from .posting import add_reply, save_photo, start_thread, waiting_photos
 from .rendering import photo_ids, render_body
 from .templatetags.forum_extras import compact_count, forum_time
-from .views import MAX_WAITING_PHOTOS, MEMBERS_PER_PAGE, POSTS_PER_PAGE, RECENT_FACES
+from .views import MAX_WAITING_PHOTOS, MEMBERS_PER_PAGE, POSTS_PER_PAGE, RECENT_FACES, THREADS_PER_PAGE
 
 
 class UserModelTests(TestCase):
@@ -1950,3 +1950,81 @@ class EmptySiteTests(TestCase):
         self.assertEqual((numbers['threads'], numbers['posts'], numbers['members']), (0, 0, 0))
         self.assertIsNone(numbers['newest'])
         self.assertContains(response, 'Nobody has posted in the last 7 days.')
+
+
+class WhatsNewTests(TestCase):
+    """The What's new page: every section's threads, by when they were last posted in."""
+
+    member: User
+    himalaya: Forum
+    gear: Forum
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        # Two sections of its own: the imported ones arrive with threads already in them.
+        category = Category.objects.create(slug='on-the-road', title='On the road')
+        cls.himalaya = Forum.objects.create(
+            category=category, slug='himalaya-and-ladakh', title='Himalaya and Ladakh', description='Passes.')
+        cls.gear = Forum.objects.create(
+            category=category, slug='gear-and-packing', title='Gear and packing', description='What to take.')
+        cls.member = User.objects.create_user('meera', display_name='Meera Iyer')
+
+    def thread(self, forum: Forum, title: str, *, minutes_ago: int = 0) -> Thread:
+        thread = start_thread(forum, self.member, title, 'Four riding days.')
+        when = timezone.now() - timedelta(minutes=minutes_ago)
+        Thread.objects.filter(pk=thread.pk).update(last_posted_at=when, created_at=when)
+        thread.refresh_from_db()
+        return thread
+
+    def listed(self) -> list[Thread]:
+        return list(self.client.get(reverse('whats_new')).context['threads'])
+
+    def test_threads_from_every_section_in_activity_order(self) -> None:
+        old = self.thread(self.gear, 'Panniers that survive a rack', minutes_ago=90)
+        recent = self.thread(self.himalaya, 'Spiti in June', minutes_ago=5)
+        self.assertEqual(self.listed(), [recent, old])
+        response = self.client.get(reverse('whats_new'))
+        self.assertContains(response, 'Spiti in June')
+        self.assertContains(response, f'href="{reverse("forum", args=[self.gear.slug])}"')  # which section
+
+    def test_a_reply_brings_its_thread_to_the_top(self) -> None:
+        first = self.thread(self.himalaya, 'Spiti in June', minutes_ago=60)
+        self.thread(self.gear, 'Panniers that survive a rack', minutes_ago=10)
+        add_reply(first, self.member, 'Batal by noon.')
+        self.assertEqual(self.listed()[0], first)
+
+    def test_pinned_threads_do_not_jump_the_queue(self) -> None:
+        # Pinning belongs to a section's own list, not to a page about what just happened.
+        recent = self.thread(self.himalaya, 'Spiti in June', minutes_ago=5)
+        pinned = self.thread(self.gear, 'Read this first', minutes_ago=300)
+        Thread.objects.filter(pk=pinned.pk).update(is_pinned=True)
+        self.assertEqual(self.listed()[0], recent)
+
+    def test_the_page_is_paged(self) -> None:
+        for number in range(THREADS_PER_PAGE + 1):
+            self.thread(self.himalaya, f'Trip {number}', minutes_ago=number)
+        response = self.client.get(reverse('whats_new'))
+        self.assertEqual(len(response.context['threads']), THREADS_PER_PAGE)
+        self.assertContains(response, f'{THREADS_PER_PAGE + 1} threads')
+        self.assertEqual(len(self.client.get(f"{reverse('whats_new')}?page=2").context['threads']), 1)
+
+    def test_the_last_page_can_be_asked_for_by_name(self) -> None:
+        for number in range(THREADS_PER_PAGE + 1):
+            self.thread(self.himalaya, f'Trip {number}', minutes_ago=number)
+        page = self.client.get(f"{reverse('whats_new')}?page=last").context['page_obj']
+        self.assertEqual((page.number, page.paginator.num_pages), (2, 2))
+
+    def test_a_page_that_is_not_there_is_not_found(self) -> None:
+        self.thread(self.himalaya, 'Spiti in June')
+        for asked in ['7', 'nonsense', '0', '-1']:
+            with self.subTest(page=asked):
+                self.assertEqual(self.client.get(f"{reverse('whats_new')}?page={asked}").status_code, 404)
+
+    def test_an_empty_board_says_so(self) -> None:
+        self.assertContains(self.client.get(reverse('whats_new')), 'Nothing has been posted yet.')
+
+    def test_every_page_links_to_it(self) -> None:
+        url = reverse('whats_new')
+        for page in [reverse('index'), reverse('members'), reverse('forum', args=[self.himalaya.slug])]:
+            with self.subTest(page=page):
+                self.assertContains(self.client.get(page), f'href="{url}"')

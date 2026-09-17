@@ -1,8 +1,8 @@
 <div class="utility">
   <div class="shell utility__inner">
     <ul class="utility__set">
-      <li><a href="whats-new.html">New posts</a></li>
-      <li><a href="whats-new.html">Trip logs</a></li>
+      <li><a href="{% url 'whats_new' %}">New posts</a></li>
+      <li><a href="{% url 'forum' 'trip-logs' %}">Trip logs</a></li>
       <li><a href="{% url 'members' %}">Members</a></li>
       <li><a href="{% url 'index' %}">Rules</a></li>
     </ul>
@@ -61,7 +61,7 @@
     </button>
     <ul class="mainnav__list" id="mainnav-list">
       <li><a href="{% url 'index' %}"{% if active == "forums" %} aria-current="page"{% endif %}>Forums</a></li>
-      <li><a href="whats-new.html"{% if active == "whats-new" %} aria-current="page"{% endif %}>What's new</a></li>
+      <li><a href="{% url 'whats_new' %}"{% if active == "whats-new" %} aria-current="page"{% endif %}>What's new</a></li>
       <li><a href="{% url 'forum' 'trip-logs' %}"{% if active == "trip-logs" %} aria-current="page"{% endif %}>Trip logs</a></li>
       <li><a href="{% url 'forum' 'route-notes' %}"{% if active == "route-notes" %} aria-current="page"{% endif %}>Route notes</a></li>
       <li><a href="{% url 'members' %}"{% if active == "members" %} aria-current="page"{% endif %}>Members</a></li>
