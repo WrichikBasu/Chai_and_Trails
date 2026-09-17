@@ -919,6 +919,8 @@ textarea.control { min-height: 11rem; resize: vertical; }
 .stats div { background: var(--sunk); border-radius: var(--r-ctl); padding: 0.6rem 0.75rem; }
 .stats dt { font-size: var(--t-xs); color: var(--faint); }
 .stats dd { margin: 0; font-family: var(--slab); font-weight: 700; font-size: var(--t-md); }
+/* The newest member's name, which is a name rather than a number. */
+.stats__name { font-size: var(--t-base); font-weight: 600; }
 
 .mini { display: grid; gap: 0.75rem; }
 .mini li { display: flex; gap: 0.6rem; align-items: flex-start; }

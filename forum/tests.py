@@ -33,7 +33,7 @@ from .photos import AVATAR_SIZE, MAX_UPLOAD_BYTES, prepare_avatar, prepare_photo
 from .posting import add_reply, save_photo, start_thread, waiting_photos
 from .rendering import photo_ids, render_body
 from .templatetags.forum_extras import compact_count, forum_time
-from .views import MAX_WAITING_PHOTOS, MEMBERS_PER_PAGE, POSTS_PER_PAGE
+from .views import MAX_WAITING_PHOTOS, MEMBERS_PER_PAGE, POSTS_PER_PAGE, RECENT_FACES
 
 
 class UserModelTests(TestCase):
@@ -206,8 +206,11 @@ class ForumPageTests(TestCase):
         self.assertContains(response, f'<a href="{tenzin.get_absolute_url()}">Tenzin Norbu</a> &middot; 22 minutes ago')
         self.assertContains(response, '61,908')
 
-    def test_index_needs_four_queries(self) -> None:
-        with self.assertNumQueries(4):  # categories, their forums with latest posts, subforums, trip logs
+    def test_index_needs_seven_queries(self) -> None:
+        # categories, their forums with latest posts, subforums, how many members, the newest
+        # one, who posted lately, trip logs. The thread and post totals add up forum counts
+        # that are already loaded, so they cost nothing.
+        with self.assertNumQueries(7):
             self.client.get(reverse('index'))
 
     def test_every_forum_page_renders(self) -> None:
@@ -1834,3 +1837,116 @@ class MembersPageTests(TestCase):
         # No file is written: the page only needs the field to have a name to link to.
         User.objects.filter(username='meera').update(avatar='avatars/kaza.jpg')
         self.assertContains(self.members(), 'avatars/kaza.jpg')
+
+
+class RecentPostersTests(TestCase):
+    """The index's "Recently posting" strip: real faces, newest poster first."""
+
+    forum: Forum
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        # A forum of its own rather than the imported ones, which arrive with their own posters.
+        cls.forum = Forum.objects.create(
+            category=Category.objects.create(slug='on-the-road', title='On the road'),
+            slug='himalaya', title='Himalaya', description='Passes and cold deserts.',
+        )
+
+    def posted(self, username: str, *, days_ago: float = 0, replies: int = 0) -> User:
+        member = User.objects.create_user(username, display_name=username.title())
+        thread = start_thread(self.forum, member, f'{username} in June', 'Four riding days.')
+        for _ in range(replies):
+            add_reply(thread, member, 'One more thing.')
+        when = timezone.now() - timedelta(days=days_ago)
+        Post.objects.filter(author=member).update(created_at=when)
+        return member
+
+    def strip(self) -> list[User]:
+        return list(self.client.get(reverse('index')).context['recent_posters'])
+
+    def test_the_faces_are_the_people_who_posted_lately(self) -> None:
+        meera = self.posted('meera', days_ago=2)
+        response = self.client.get(reverse('index'))
+        self.assertContains(response, f'<a href="{meera.get_absolute_url()}" title="Meera">')
+        self.assertContains(response, 'Recently posting')
+
+    def test_the_newest_poster_comes_first(self) -> None:
+        self.posted('arjun', days_ago=5)
+        self.posted('meera', days_ago=1)
+        self.assertEqual([member.display_name for member in self.strip()], ['Meera', 'Arjun'])
+
+    def test_somebody_who_posted_ten_times_appears_once(self) -> None:
+        self.posted('meera', replies=9)
+        self.assertEqual([member.display_name for member in self.strip()], ['Meera'])
+
+    def test_older_posts_and_closed_accounts_are_left_out(self) -> None:
+        self.posted('lastyear', days_ago=400)
+        User.objects.filter(username=self.posted('retired', days_ago=1).username).update(is_active=False)
+        self.assertEqual(self.strip(), [])
+        self.assertContains(self.client.get(reverse('index')), 'Nobody has posted in the last 7 days.')
+
+    def test_the_strip_holds_at_most_eight_faces(self) -> None:
+        for number in range(RECENT_FACES + 2):
+            self.posted(f'rider{number}', days_ago=1)
+        self.assertEqual(len(self.strip()), RECENT_FACES)
+
+
+class ForumNumbersTests(TestCase):
+    """The index sidebar's totals, which come from the counts posting keeps up to date."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+
+    def numbers(self) -> dict[str, Any]:
+        return self.client.get(reverse('index')).context['numbers']
+
+    def test_threads_and_posts_add_up_the_whole_board(self) -> None:
+        # Subforums count inside their parents, so the total is the top level's.
+        top_level = Forum.objects.filter(category__isnull=False)
+        self.assertEqual(self.numbers()['threads'], sum(forum.thread_count for forum in top_level))
+        self.assertEqual(self.numbers()['posts'], sum(forum.post_count for forum in top_level))
+
+    def test_a_new_post_moves_the_totals(self) -> None:
+        before = self.numbers()
+        member = User.objects.create_user('meera', display_name='Meera Iyer')
+        thread = start_thread(Forum.objects.get(slug='himalaya-and-ladakh'), member, 'Spiti in June', 'Four days.')
+        add_reply(thread, member, 'Batal by noon.')
+        after = self.numbers()
+        self.assertEqual(after['threads'], before['threads'] + 1)
+        self.assertEqual(after['posts'], before['posts'] + 2)
+
+    def test_a_subforums_posts_are_counted_once(self) -> None:
+        member = User.objects.create_user('arjun', display_name='Arjun Sethi')
+        before = self.numbers()['posts']
+        subforum = Forum.objects.filter(parent__isnull=False).first()
+        assert subforum is not None
+        start_thread(subforum, member, 'Hampta in July', 'Two nights out.')
+        self.assertEqual(self.numbers()['posts'], before + 1)
+
+    def test_members_are_counted_and_the_newest_is_named(self) -> None:
+        User.objects.create_user('early', display_name='Early Bird',
+                                 date_joined=timezone.now() - timedelta(days=30))
+        newest = User.objects.create_user('latest', display_name='Just Arrived')
+        User.objects.create_user('retired', display_name='Gone Away', is_active=False)
+        numbers = self.numbers()
+        self.assertEqual(numbers['members'], User.objects.filter(is_active=True).count())
+        self.assertEqual(numbers['newest'], newest)
+        response = self.client.get(reverse('index'))
+        self.assertContains(response, f'<a href="{newest.get_absolute_url()}">Just Arrived</a>', html=True)
+
+    def test_a_board_with_nothing_posted_shows_zeroes(self) -> None:
+        Forum.objects.update(thread_count=0, post_count=0)
+        numbers = self.numbers()
+        self.assertEqual((numbers['threads'], numbers['posts']), (0, 0))
+
+
+class EmptySiteTests(TestCase):
+    """The index before anyone has signed up: no counts, and nothing made up."""
+
+    def test_the_numbers_are_all_nothing(self) -> None:
+        response = self.client.get(reverse('index'))
+        numbers = response.context['numbers']
+        self.assertEqual((numbers['threads'], numbers['posts'], numbers['members']), (0, 0, 0))
+        self.assertIsNone(numbers['newest'])
+        self.assertContains(response, 'Nobody has posted in the last 7 days.')

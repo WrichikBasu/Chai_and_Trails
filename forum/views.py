@@ -1,3 +1,4 @@
+from datetime import timedelta
 from functools import cached_property
 from typing import Any, Final, TypedDict, cast
 
@@ -5,10 +6,11 @@ from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import Count, F, OuterRef, Prefetch, Q, QuerySet, Subquery
+from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, DetailView, ListView, View
 
@@ -21,6 +23,9 @@ from .rendering import photo_markdown, render_body
 THREADS_PER_PAGE: Final[int] = 20
 POSTS_PER_PAGE: Final[int] = 20
 LATEST_TRIP_LOGS: Final[int] = 4
+# The index's "Recently posting" strip: how far back it looks, and how many faces fit.
+RECENT_POSTER_WINDOW: Final[timedelta] = timedelta(days=7)
+RECENT_FACES: Final[int] = 8
 MEMBERS_PER_PAGE: Final[int] = 24
 # What the Members page can be sorted by, and the ?sort= value that asks for it.
 MEMBER_ORDERINGS: Final[dict[str, list[str]]] = {
@@ -56,16 +61,54 @@ def forum_crumbs(forum: Forum, *, include_forum: bool) -> list[Crumb]:
     ]
 
 
+class ForumNumbers(TypedDict):
+    threads: int
+    posts: int
+    members: int
+    newest: User | None
+
+
+def forum_numbers(categories: list[Category], members: QuerySet[User]) -> ForumNumbers:
+    """The totals for the index sidebar.
+
+    Threads and posts are added up from the top-level forums already loaded for
+    the page, so they cost nothing and agree with the counts shown on the rows.
+    Only the top level is counted: posting adds to a forum and to every forum
+    above it, so a parent's count already holds its subforums'.
+    """
+    top_level = [forum for category in categories for forum in category.forums.all()]
+    return {
+        'threads': sum(forum.thread_count for forum in top_level),
+        'posts': sum(forum.post_count for forum in top_level),
+        'members': members.count(),
+        'newest': members.order_by('-date_joined').first(),
+    }
+
+
 def index(request: HttpRequest) -> HttpResponse:
-    categories = Category.objects.prefetch_related(
+    # A list, not a queryset: the totals below walk it, and the template then reuses
+    # what was loaded here instead of asking for the forums a second time.
+    categories = list(Category.objects.prefetch_related(
         Prefetch('forums', queryset=with_last_post(Forum.objects.all())),
         'forums__children',
-    )
+    ))
     trip_logs = (
         Thread.objects.filter(Q(forum__slug='trip-logs') | Q(forum__parent__slug='trip-logs'))
         .select_related('author').order_by('-created_at')[:LATEST_TRIP_LOGS]
     )
-    return render(request, 'index.html', {'categories': categories, 'trip_logs': trip_logs})
+    # Who has been posting lately. Annotating with each member's newest post groups by
+    # member, so someone who wrote ten replies this week appears once, not ten times.
+    members = User.objects.filter(is_active=True)
+    posted_lately = members.filter(
+        posts__created_at__gte=timezone.now() - RECENT_POSTER_WINDOW,
+    ).annotate(latest_post=Max('posts__created_at'))
+    return render(request, 'index.html', {
+        'categories': categories,
+        'trip_logs': trip_logs,
+        'recent_posters': posted_lately.order_by('-latest_post')[:RECENT_FACES],
+        'recent_days': RECENT_POSTER_WINDOW.days,
+        'numbers': forum_numbers(categories, members),
+    })
 
 
 class ElidedPagesMixin:

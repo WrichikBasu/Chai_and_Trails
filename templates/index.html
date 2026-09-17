@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load forum_extras %}
+{% load humanize forum_extras %}
 
 {% block content %}
 <div class="layout layout--split">
@@ -34,44 +34,20 @@
 
   <aside class="side" aria-label="Forum information">
     <section class="block">
-      <div class="block__bar block__bar--plain"><h2>On the road right now</h2></div>
+      <div class="block__bar block__bar--plain"><h2>Recently posting</h2></div>
       <div class="block__body">
-        <p style="margin-bottom:.75rem;color:var(--muted);font-size:var(--t-sm)">214 members and 1,986 guests are reading.</p>
-        <div class="faces">
-          
-            <a href="profile.html" title="Meera Iyer">
-<span class="avatar tone-1 avatar--sm" aria-hidden="true">M</span>
-</a>
-          
-            <a href="profile.html" title="Arjun Sethi">
-<span class="avatar tone-2 avatar--sm" aria-hidden="true">A</span>
-</a>
-          
-            <a href="profile.html" title="Tenzin Norbu">
-<span class="avatar tone-4 avatar--sm" aria-hidden="true">T</span>
-</a>
-          
-            <a href="profile.html" title="Sam Fernandes">
-<span class="avatar tone-5 avatar--sm" aria-hidden="true">S</span>
-</a>
-          
-            <a href="profile.html" title="Priyanka Rao">
-<span class="avatar tone-6 avatar--sm" aria-hidden="true">P</span>
-</a>
-          
-            <a href="profile.html" title="Farida Qureshi">
-<span class="avatar tone-3 avatar--sm" aria-hidden="true">F</span>
-</a>
-          
-            <a href="profile.html" title="Lhamo Sherpa">
-<span class="avatar tone-1 avatar--sm" aria-hidden="true">L</span>
-</a>
-          
-            <a href="profile.html" title="Dev Mahato">
-<span class="avatar tone-2 avatar--sm" aria-hidden="true">D</span>
-</a>
-          
-        </div>
+        {% if recent_posters %}
+          <div class="faces">
+            {% for member in recent_posters %}
+              <a href="{{ member.get_absolute_url }}" title="{{ member.display_name }}">
+                {% include "partials/avatar.html" with member=member size="avatar--sm" %}
+                <span class="only-screenreader">{{ member.display_name }}</span>
+              </a>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p>Nobody has posted in the last {{ recent_days }} days.</p>
+        {% endif %}
       </div>
     </section>
 
@@ -101,10 +77,17 @@
       <div class="block__bar block__bar--plain"><h2>Forum numbers</h2></div>
       <div class="block__body">
         <dl class="stats">
-          <div><dt>Threads</dt><dd>44,180</dd></div>
-          <div><dt>Posts</dt><dd>1.9M</dd></div>
-          <div><dt>Members</dt><dd>43,602</dd></div>
-          <div><dt>Newest</dt><dd style="font-size:var(--t-base)">Dev Mahato</dd></div>
+          <div><dt>Threads</dt><dd>{{ numbers.threads|intcomma }}</dd></div>
+          <div><dt>Posts</dt><dd>{{ numbers.posts|compact_count }}</dd></div>
+          <div><dt>Members</dt><dd>{{ numbers.members|intcomma }}</dd></div>
+          <div>
+            <dt>Newest</dt>
+            <dd class="stats__name">
+              {% if numbers.newest %}
+                <a href="{{ numbers.newest.get_absolute_url }}">{{ numbers.newest.display_name }}</a>
+              {% else %}&mdash;{% endif %}
+            </dd>
+          </div>
         </dl>
       </div>
     </section>
