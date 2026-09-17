@@ -7,7 +7,8 @@ from anyascii import anyascii
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.core.files.base import ContentFile
+from django.db import models, transaction
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
@@ -58,12 +59,24 @@ class User(AbstractUser):
         max_length=150, blank=True,
         help_text='Shown on posts and profiles. Left blank, the username is used.',
     )
+
+    avatar = models.ImageField('profile photo', upload_to='avatars/', blank=True, editable=False)
+    '''
+    The profile photo, if they have set one; otherwise pages show their first letter 
+    on a tinted square. Written only through set_avatar(), so every stored file has 
+    been through forum.photos: square, small, and without the camera's metadata.
+    '''
+
     avatar_tone = models.PositiveSmallIntegerField(choices=Tone, default=random_tone)
     rank = models.CharField(max_length=40, default='Member')
     location = models.CharField('based in', max_length=100, blank=True)
     rides = models.CharField(max_length=100, blank=True, help_text='Bike, car or other ride shown on posts.')
-    # Kept up to date by posting, like the forum counts, so posts can show it without counting.
+
     post_count = models.PositiveIntegerField(default=0, editable=False)
+    '''
+    Number of posts by the user. Updated on the go when new posts are made, so that a re-count 
+    is not necessary.
+    '''
 
     class Meta(AbstractUser.Meta):
         constraints = [
@@ -77,6 +90,22 @@ class User(AbstractUser):
         if not self.display_name:
             self.display_name = self.username
         super().save(*args, **kwargs)
+
+    def get_absolute_url(self) -> str:
+        return reverse('member', args=[self.username])
+
+    def set_avatar(self, image: ContentFile | None) -> None:
+        """Put a prepared photo in place of the current one, or None to go back to the letter.
+
+        The file they had before is deleted once the change is committed, the same
+        way discarded post photos are: a rolled-back change must not leave the row
+        pointing at a file that is already gone.
+        """
+        storage, previous = self.avatar.storage, self.avatar.name
+        self.avatar = image or ''
+        self.save(update_fields=['avatar'])
+        if previous and previous != self.avatar.name:
+            transaction.on_commit(lambda: storage.delete(previous))
 
     # AbstractUser builds these from first_name and last_name, which no longer exist.
     def get_full_name(self) -> str:
