@@ -5,20 +5,23 @@ from typing import Any, Final, TypedDict, cast
 from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
+from django.contrib.postgres.search import SearchQuery, SearchRank
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import InvalidPage, Paginator
-from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, QuerySet, Subquery
+from django.db.models import Count, Exists, F, Max, OuterRef, Prefetch, Q, QuerySet, Subquery, Value
+from django.db.models.functions import Coalesce
 from django.http import (
     Http404, HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect, JsonResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import urlencode
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, DetailView, ListView, View
 
 from .forms import MAX_PHOTOS, NewThreadForm, ProfileForm, RegistrationForm, ReplyForm, draft_key
-from .models import Attachment, Category, Forum, Post, Thread, User
+from .models import SEARCH_CONFIG, Attachment, Category, Forum, Post, Thread, User
 from .photos import MAX_UPLOAD_BYTES, prepare_photo
 from .posting import add_reply, discard_photos, save_photo, start_thread, waiting_photos
 from .rendering import photo_markdown, render_body
@@ -31,6 +34,10 @@ NAV_SECTIONS: Final[frozenset[str]] = frozenset({'trip-logs', 'route-notes'})
 # The index's "Recently posting" strip: how far back it looks, and how many faces fit.
 RECENT_POSTER_WINDOW: Final[timedelta] = timedelta(days=7)
 RECENT_FACES: Final[int] = 8
+# Search: how much a title match counts next to a match inside a post, and how many
+# members a search can turn up beside the threads.
+TITLE_WEIGHT: Final[float] = 2.0
+SEARCH_MEMBERS: Final[int] = 6
 MEMBERS_PER_PAGE: Final[int] = 24
 # What the Members page can be sorted by, and the ?sort= value that asks for it.
 MEMBER_ORDERINGS: Final[dict[str, list[str]]] = {
@@ -290,6 +297,54 @@ def paginate(request: HttpRequest, objects: QuerySet[Any], per_page: int) -> dic
         'is_paginated': page.has_other_pages(),
         'page_range': paginator.get_elided_page_range(page.number, on_each_side=2, on_ends=1),
     }
+
+
+def search(request: HttpRequest) -> HttpResponse:
+    """What the masthead box looks for: threads, by title and by what was posted in them.
+
+    PostgreSQL does the matching against the stored search_vector columns, so a
+    search for "camping" finds "camped" and a search for "the" finds nothing.
+    "websearch" is the query language people already know from search engines:
+    quoted phrases, OR, and -word to leave something out. Whatever they type is
+    a query rather than an error, which plain tsquery input would not be.
+
+    A thread is a hit if its title matches or any of its posts do, and it is
+    ranked on both, with the title counting for more.
+    """
+    asked = request.GET.get('q', '').strip()
+    if not asked:
+        return render(request, 'search.html', {'search_query': asked})
+
+    query = SearchQuery(asked, search_type='websearch', config=SEARCH_CONFIG)
+    matching_posts = Post.objects.filter(thread=OuterRef('pk'), search_vector=query)
+    best_post = matching_posts.annotate(
+        rank=SearchRank(F('search_vector'), query),
+    ).order_by('-rank').values('rank')[:1]
+    threads = (
+        Thread.objects
+        .filter(Q(search_vector=query) | Exists(matching_posts))
+        .annotate(
+            score=(
+                SearchRank(F('search_vector'), query) * TITLE_WEIGHT
+                + Coalesce(Subquery(best_post), Value(0.0))
+            ),
+        )
+        .select_related('author', 'forum', 'last_post__author')
+        .order_by('-score', '-last_posted_at', '-id')  # newest first among equally good matches
+    )
+    # Names are looked up as they are written, not stemmed: nobody searches for half a name.
+    members = User.objects.filter(is_active=True).filter(
+        Q(display_name__icontains=asked) | Q(username__icontains=asked) | Q(location__icontains=asked),
+    ).order_by('-post_count', 'username')[:SEARCH_MEMBERS]
+
+    page = paginate(request, threads, THREADS_PER_PAGE)
+    return render(request, 'search.html', {
+        'search_query': asked,
+        'pager_query': urlencode({'q': asked}),  # page 2 of the same search, not of nothing
+        'threads': page['page_obj'].object_list,
+        'members': members,
+        **page,
+    })
 
 
 def whats_new(request: HttpRequest) -> HttpResponse:

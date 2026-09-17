@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}{% if search_query %}{{ search_query }} | Search{% else %}Search{% endif %} | Chai &amp; Trails{% endblock %}
+
+{% block description %}Search the threads, trip logs and members of Chai &amp; Trails.{% endblock %}
+
+{% block header %}{% include "partials/header.html" %}{% endblock %}
+
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Search</h1>
+    {% if search_query %}
+      <p>
+        {{ page_obj.paginator.count|intcomma }} thread{{ page_obj.paginator.count|pluralize }}
+        {{ page_obj.paginator.count|pluralize:"matches,match" }} &ldquo;{{ search_query }}&rdquo;.
+      </p>
+    {% else %}
+      <p>Look through thread titles and everything posted in them.</p>
+    {% endif %}
+  </div>
+</div>
+
+<form class="searchbar" role="search" action="{% url 'search' %}" method="get">
+  <label class="only-screenreader" for="search-q">Search the forum</label>
+  <input class="control" id="search-q" name="q" type="search" value="{{ search_query }}"
+         placeholder="Route, pass, month, member" autofocus>
+  <button class="btn btn--board" type="submit">Search</button>
+</form>
+
+{% if search_query %}
+  {% if members %}
+    <section class="block">
+      <div class="block__bar block__bar--plain"><h2>Members</h2></div>
+      <div class="block__body">
+        <ul class="mini">
+          {% for member in members %}
+            <li>
+              {% include "partials/avatar.html" with member=member size="avatar--sm" %}
+              <span>
+                <a class="mini__title" href="{{ member.get_absolute_url }}">{{ member.display_name }}</a>
+                <span class="mini__meta">
+                  {{ member.rank }}{% if member.location %} &middot; {{ member.location }}{% endif %}
+                  &middot; {{ member.post_count|intcomma }} post{{ member.post_count|pluralize }}
+                </span>
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="block">
+    <div class="block__bar block__bar--plain"><h2>Threads</h2></div>
+    {% if threads %}
+      <ul>
+        {% for thread in threads %}
+          {% include "partials/thread_row.html" with show_forum=True %}
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="block__body">
+        <p>
+          Nothing matches &ldquo;{{ search_query }}&rdquo;{% if members %} except the members above{% endif %}.
+          Try fewer words, or a different one.
+        </p>
+      </div>
+    {% endif %}
+  </section>
+
+  {% include "partials/pager.html" with query=pager_query %}
+{% endif %}
+{% endblock %}

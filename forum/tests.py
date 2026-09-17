@@ -2067,3 +2067,100 @@ class NavHighlightTests(TestCase):
         self.assertEqual(self.lit(reverse('whats_new')), ["What's new"])
         self.assertEqual(self.lit(reverse('members')), ['Members'])
         self.assertEqual(self.lit(self.member.get_absolute_url()), ['Members'])
+
+
+class SearchTests(TestCase):
+    """The masthead search: threads by title and by what was posted in them, plus members."""
+
+    member: User
+    other: User
+    himalaya: Forum
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        category = Category.objects.create(slug='on-the-road', title='On the road')
+        cls.himalaya = Forum.objects.create(
+            category=category, slug='himalaya-and-ladakh', title='Himalaya and Ladakh', description='Passes.')
+        cls.member = User.objects.create_user('meera', display_name='Meera Iyer', location='Bengaluru')
+        cls.other = User.objects.create_user('tenzin', display_name='Tenzin Norbu', location='Leh')
+
+    def thread(self, title: str, body: str = 'Nothing much to report.', author: User | None = None) -> Thread:
+        return start_thread(self.himalaya, author or self.member, title, body)
+
+    def found(self, asked: str) -> list[Thread]:
+        return list(self.client.get(reverse('search'), {'q': asked}).context['threads'])
+
+    def test_a_title_is_searched(self) -> None:
+        spiti = self.thread('Spiti in June')
+        self.thread('Konkan in the rain')
+        self.assertEqual(self.found('spiti'), [spiti])
+
+    def test_what_was_posted_is_searched_too(self) -> None:
+        thread = self.thread('Four days out', 'The road to Batal is washed out past Chhatru.')
+        self.assertEqual(self.found('chhatru'), [thread])
+
+    def test_words_are_matched_by_their_stem(self) -> None:
+        thread = self.thread('Camping above the treeline')
+        self.assertEqual(self.found('camped'), [thread])
+        self.assertEqual(self.found('camp'), [thread])
+
+    def test_a_quoted_phrase_must_appear_in_that_order(self) -> None:
+        together = self.thread('Route notes', 'Ask about the road condition before you set off.')
+        self.thread('Other notes', 'The condition of the bike matters more than the road.')
+        self.assertEqual(self.found('"road condition"'), [together])
+
+    def test_a_word_can_be_left_out(self) -> None:
+        wanted = self.thread('Spiti in June')
+        self.thread('Spiti in June by bus')
+        self.assertEqual(self.found('spiti -bus'), [wanted])
+
+    def test_a_title_match_outranks_a_match_inside_a_post(self) -> None:
+        in_body = self.thread('Four days out', 'We stopped in Kaza for the night.')
+        in_title = self.thread('Kaza and back')
+        self.assertEqual(self.found('kaza'), [in_title, in_body])
+
+    def test_a_thread_is_listed_once_however_many_posts_match(self) -> None:
+        thread = self.thread('Four days out', 'Kaza was cold.')
+        for _ in range(3):
+            add_reply(thread, self.other, 'Kaza again, still cold.')
+        self.assertEqual(self.found('kaza'), [thread])
+
+    def test_members_are_found_by_name_username_or_town(self) -> None:
+        for asked in ['Meera', 'meera', 'Bengaluru']:
+            with self.subTest(asked=asked):
+                found = self.client.get(reverse('search'), {'q': asked}).context['members']
+                self.assertEqual(list(found), [self.member])
+
+    def test_an_empty_search_just_asks_for_something(self) -> None:
+        response = self.client.get(reverse('search'))
+        self.assertContains(response, 'Look through thread titles')
+        self.assertNotIn('threads', response.context)
+        self.assertContains(self.client.get(reverse('search'), {'q': '   '}), 'Look through thread titles')
+
+    def test_a_search_with_no_hits_says_so(self) -> None:
+        self.thread('Spiti in June')
+        response = self.client.get(reverse('search'), {'q': 'submarine'})
+        self.assertContains(response, 'Nothing matches')
+
+    def test_odd_input_is_a_search_and_not_an_error(self) -> None:
+        self.thread('Spiti in June')
+        for asked in ['!@#$%', '"unbalanced', "'; DROP TABLE forum_thread; --", 'and or not', ':*', '<script>']:
+            with self.subTest(asked=asked):
+                self.assertEqual(self.client.get(reverse('search'), {'q': asked}).status_code, 200)
+        self.assertTrue(Thread.objects.filter(title='Spiti in June').exists())  # still there
+
+    def test_the_results_are_paged_and_keep_the_search(self) -> None:
+        for number in range(THREADS_PER_PAGE + 1):
+            self.thread(f'Spiti trip {number}')
+        response = self.client.get(reverse('search'), {'q': 'spiti'})
+        self.assertEqual(len(response.context['threads']), THREADS_PER_PAGE)
+        self.assertContains(response, 'href="?page=2&amp;q=spiti"')
+        second = self.client.get(reverse('search'), {'q': 'spiti', 'page': '2'})
+        self.assertEqual(len(second.context['threads']), 1)
+
+    def test_the_masthead_box_searches_and_remembers_what_was_asked(self) -> None:
+        response = self.client.get(reverse('search'), {'q': 'spiti'})
+        self.assertContains(response, f'action="{reverse("search")}"')
+        self.assertContains(response, 'value="spiti"')
+        # Every other page has the same box, empty.
+        self.assertContains(self.client.get(reverse('index')), f'action="{reverse("search")}"')
