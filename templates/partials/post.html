@@ -2,11 +2,11 @@
 {% with author=post.author %}
 <article class="post{% if number == 1 %} post--op{% endif %}" id="post-{{ post.pk }}">
   <div class="post__who">
-    <a href="profile.html">
-      <span class="avatar tone-{{ author.avatar_tone }} avatar--lg" aria-hidden="true">{{ author.display_name|first }}</span>
+    <a href="{{ author.get_absolute_url }}">
+      {% include "partials/avatar.html" with member=author size="avatar--lg" %}
     </a>
     <div>
-      <a class="post__name" href="profile.html">{{ author.display_name }}</a>
+      <a class="post__name" href="{{ author.get_absolute_url }}">{{ author.display_name }}</a>
       <p class="post__rank">{{ author.rank }}</p>
       <dl class="post__facts">
         <div><dt>Joined</dt><dd>{{ author.date_joined|date:"M Y" }}</dd></div>

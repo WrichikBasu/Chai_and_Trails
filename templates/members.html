@@ -1,6 +1,9 @@
 {% extends "base.html" %}
+{% load humanize %}
 
 {% block title %}Members | Chai &amp; Trails{% endblock %}
+
+{% block description %}The people posting on Chai &amp; Trails: {{ page_obj.paginator.count|intcomma }} members.{% endblock %}
 
 {% block header %}{% include "partials/header.html" with active="members" %}{% endblock %}
 
@@ -8,134 +11,38 @@
 <div class="pagehead">
   <div>
     <h1>Members</h1>
-    <p>43,602 people have signed up. These are the ones posting this month.</p>
+    <p>
+      {{ page_obj.paginator.count|intcomma }} {{ page_obj.paginator.count|pluralize:"person has,people have" }} signed up.
+      {% if sort == "newest" %}The newest arrivals first.{% else %}The busiest posters first.{% endif %}
+    </p>
   </div>
   <div class="pagehead__side">
-    <a class="btn" href="#">Most posts</a>
-    <a class="btn" href="#">Newest</a>
+    <a class="btn{% if sort != 'newest' %} btn--board{% endif %}" href="?sort=posts"
+       {% if sort != "newest" %}aria-current="true"{% endif %}>Most posts</a>
+    <a class="btn{% if sort == 'newest' %} btn--board{% endif %}" href="?sort=newest"
+       {% if sort == "newest" %}aria-current="true"{% endif %}>Newest</a>
   </div>
 </div>
 
 <div class="members">
-  
+  {% for member in members %}
     <article class="member">
-      
-<span class="avatar tone-2 avatar--lg" aria-hidden="true">A</span>
-
+      {% include "partials/avatar.html" with member=member size="avatar--lg" %}
       <div>
-        <a class="member__name" href="profile.html">Arjun Sethi</a>
-        <p class="member__rank">Moderator</p>
-        <p class="member__line">Chandigarh &middot; joined Aug 2012</p>
-        <p class="member__line">6,215 posts &middot; Thar LX 4x4</p>
+        <a class="member__name" href="{{ member.get_absolute_url }}">{{ member.display_name }}</a>
+        <p class="member__rank">{{ member.rank }}</p>
+        <p class="member__line">
+          {% if member.location %}{{ member.location }} &middot; {% endif %}joined {{ member.date_joined|date:"M Y" }}
+        </p>
+        <p class="member__line">
+          {{ member.post_count|intcomma }} post{{ member.post_count|pluralize }}{% if member.rides %} &middot; {{ member.rides }}{% endif %}
+        </p>
       </div>
     </article>
-  
-    <article class="member">
-      
-<span class="avatar tone-1 avatar--lg" aria-hidden="true">M</span>
-
-      <div>
-        <a class="member__name" href="profile.html">Meera Iyer</a>
-        <p class="member__rank">Trail regular</p>
-        <p class="member__line">Bengaluru &middot; joined Mar 2019</p>
-        <p class="member__line">1,842 posts &middot; Himalayan 450</p>
-      </div>
-    </article>
-  
-    <article class="member">
-      
-<span class="avatar tone-4 avatar--lg" aria-hidden="true">T</span>
-
-      <div>
-        <a class="member__name" href="profile.html">Tenzin Norbu</a>
-        <p class="member__rank">Local knowledge</p>
-        <p class="member__line">Leh &middot; joined Jul 2016</p>
-        <p class="member__line">2,077 posts &middot; Bolero Camper</p>
-      </div>
-    </article>
-  
-    <article class="member">
-      
-<span class="avatar tone-3 avatar--lg" aria-hidden="true">F</span>
-
-      <div>
-        <a class="member__name" href="profile.html">Farida Qureshi</a>
-        <p class="member__rank">Trip log author</p>
-        <p class="member__line">Mumbai &middot; joined Feb 2021</p>
-        <p class="member__line">934 posts &middot; Duster AWD</p>
-      </div>
-    </article>
-  
-    <article class="member">
-      
-<span class="avatar tone-6 avatar--lg" aria-hidden="true">P</span>
-
-      <div>
-        <a class="member__name" href="profile.html">Priyanka Rao</a>
-        <p class="member__rank">Member</p>
-        <p class="member__line">Hyderabad &middot; joined Apr 2020</p>
-        <p class="member__line">1,109 posts &middot; Trek 820 + trains</p>
-      </div>
-    </article>
-  
-    <article class="member">
-      
-<span class="avatar tone-1 avatar--lg" aria-hidden="true">L</span>
-
-      <div>
-        <a class="member__name" href="profile.html">Lhamo Sherpa</a>
-        <p class="member__rank">Trek lead</p>
-        <p class="member__line">Darjeeling &middot; joined Sep 2018</p>
-        <p class="member__line">780 posts &middot; Boots</p>
-      </div>
-    </article>
-  
-    <article class="member">
-      
-<span class="avatar tone-5 avatar--lg" aria-hidden="true">S</span>
-
-      <div>
-        <a class="member__name" href="profile.html">Sam Fernandes</a>
-        <p class="member__rank">Member</p>
-        <p class="member__line">Panjim &middot; joined Nov 2023</p>
-        <p class="member__line">318 posts &middot; Interceptor 650</p>
-      </div>
-    </article>
-  
-    <article class="member">
-      
-<span class="avatar tone-2 avatar--lg" aria-hidden="true">D</span>
-
-      <div>
-        <a class="member__name" href="profile.html">Dev Mahato</a>
-        <p class="member__rank">Member</p>
-        <p class="member__line">Ranchi &middot; joined Feb 2026</p>
-        <p class="member__line">47 posts &middot; Bus and thumb</p>
-      </div>
-    </article>
-  
+  {% empty %}
+    <p>Nobody has signed up yet.</p>
+  {% endfor %}
 </div>
 
-
-<nav class="pager" aria-label="Pagination">
-  
-  
-    
-      <span aria-current="page">1</span>
-    
-  
-    
-      <a href="{% url 'members' %}">2</a>
-    
-  
-    
-      <a href="{% url 'members' %}">3</a>
-    
-  
-    
-      <a href="{% url 'members' %}">4</a>
-    
-  
-  <a href="{% url 'members' %}" rel="next">Next</a>
-</nav>
+{% include "partials/pager.html" %}
 {% endblock %}

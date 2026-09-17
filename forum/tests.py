@@ -29,11 +29,11 @@ from PIL import Image
 from .management.commands.import_forums import DATA_FILE, JsonData, JsonForum, parse_when
 from .forms import MAX_PHOTOS
 from .models import SLUG_MAX_LENGTH, Attachment, Category, Forum, Post, Thread, Tone, User, transliterated_slug
-from .photos import MAX_UPLOAD_BYTES, prepare_photo
+from .photos import AVATAR_SIZE, MAX_UPLOAD_BYTES, prepare_avatar, prepare_photo
 from .posting import add_reply, save_photo, start_thread, waiting_photos
 from .rendering import photo_ids, render_body
 from .templatetags.forum_extras import compact_count, forum_time
-from .views import MAX_WAITING_PHOTOS, POSTS_PER_PAGE
+from .views import MAX_WAITING_PHOTOS, MEMBERS_PER_PAGE, POSTS_PER_PAGE, RECENT_FACES
 
 
 class UserModelTests(TestCase):
@@ -202,11 +202,15 @@ class ForumPageTests(TestCase):
     def test_index_shows_each_forums_latest_post(self) -> None:
         response = self.client.get(reverse('index'))
         self.assertContains(response, 'Manali to Kaza, first week of June')
-        self.assertContains(response, '<a href="profile.html">Tenzin Norbu</a> &middot; 22 minutes ago')
+        tenzin = User.objects.get(username='tenzin-norbu')
+        self.assertContains(response, f'<a href="{tenzin.get_absolute_url()}">Tenzin Norbu</a> &middot; 22 minutes ago')
         self.assertContains(response, '61,908')
 
-    def test_index_needs_four_queries(self) -> None:
-        with self.assertNumQueries(4):  # categories, their forums with latest posts, subforums, trip logs
+    def test_index_needs_seven_queries(self) -> None:
+        # categories, their forums with latest posts, subforums, how many members, the newest
+        # one, who posted lately, trip logs. The thread and post totals add up forum counts
+        # that are already loaded, so they cost nothing.
+        with self.assertNumQueries(7):
             self.client.get(reverse('index'))
 
     def test_every_forum_page_renders(self) -> None:
@@ -326,7 +330,10 @@ class RegistrationTests(TestCase):
         self.assertTrue(member.password.startswith('argon2$argon2id$'))
         self.assertTrue(member.check_password('monsoon-konkan-26'))
         self.assertEqual(int(self.client.session['_auth_user_id']), member.pk)
-        self.assertContains(self.client.get(reverse('index')), '<span>Meera Iyer</span>', html=True)
+        # The bar greets them by name, and the name links to their profile.
+        self.assertContains(
+            self.client.get(reverse('index')),
+            f'<a href="{member.get_absolute_url()}">Meera Iyer</a>', html=True)
 
     def test_registering_works_with_csrf_checks_on(self) -> None:
         browser = Client(enforce_csrf_checks=True)
@@ -376,7 +383,8 @@ class LoginTests(TestCase):
         response = self.client.post(reverse('login'), {'username': 'tenzin', 'password': 'high-passes-26'})
         self.assertRedirects(response, reverse('index'))
         index = self.client.get(reverse('index'))
-        self.assertContains(index, '<span>Tenzin Norbu</span>', html=True)
+        tenzin = User.objects.get(username='tenzin')
+        self.assertContains(index, f'<a href="{tenzin.get_absolute_url()}">Tenzin Norbu</a>', html=True)
         self.assertContains(index, f'action="{reverse("logout")}"')
 
         self.assertRedirects(self.client.post(reverse('logout')), reverse('index'))
@@ -1494,3 +1502,451 @@ class HtmlInPostsTests(SimpleTestCase):
         self.assertNotIn('<h1', html)
         self.assertIn('Shouting', html)
         self.assertIn('<h3>Fine</h3>', html)
+
+
+class MemberProfileTests(TestCase):
+    media_root: str
+    member: User
+    thread: Thread
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.media_root = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.media_root, ignore_errors=True)
+        cls.enterClassContext(override_settings(MEDIA_ROOT=cls.media_root))
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user(
+            'meera', display_name='Meera Iyer', location='Bengaluru', rides='Himalayan 450', rank='Trail regular')
+        himalaya = Forum.objects.get(slug='himalaya-and-ladakh')
+        cls.thread = start_thread(himalaya, cls.member, 'Spiti in June', 'Four riding days.')
+        add_reply(cls.thread, cls.member, 'Batal by noon.')
+
+    def profile(self) -> HttpResponse:
+        return self.client.get(self.member.get_absolute_url())
+
+    def test_the_profile_shows_who_they_are(self) -> None:
+        response = self.profile()
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<h1>Meera Iyer</h1>', html=True)
+        for detail in ['Trail regular', 'Bengaluru', 'Himalayan 450']:
+            self.assertContains(response, detail)
+        self.assertContains(response, '<div><dt>Posts</dt><dd>2</dd></div>', html=True)
+        self.assertContains(response, '<div><dt>Threads</dt><dd>1</dd></div>', html=True)
+        self.assertNotContains(response, self.member.email or 'no-email-set@example.com')
+
+    def test_recent_posts_link_to_the_post_itself(self) -> None:
+        response = self.profile()
+        latest = Post.objects.latest('created_at')
+        self.assertContains(response, f'href="{self.thread.get_absolute_url()}#post-{latest.pk}"')
+        html = response.content.decode()
+        opening = self.thread.posts.first()
+        assert opening is not None
+        self.assertLess(html.index(f'#post-{latest.pk}'), html.index(f'#post-{opening.pk}'))  # newest first
+        self.assertContains(response, 'Batal by noon.')  # an excerpt of each post
+
+    def test_a_post_on_a_later_page_links_to_that_page(self) -> None:
+        for n in range(POSTS_PER_PAGE):
+            add_reply(self.thread, self.member, f'Reply {n}')
+        latest = Post.objects.latest('created_at')
+        self.assertContains(self.profile(), f'href="{self.thread.get_absolute_url()}?page=2#post-{latest.pk}"')
+
+    def test_threads_started_are_listed(self) -> None:
+        response = self.profile()
+        self.assertContains(response, f'<a class="mini__title" href="{self.thread.get_absolute_url()}">Spiti in June</a>', html=True)
+        self.assertContains(response, '1 reply')
+
+    def test_photos_they_posted_are_shown(self) -> None:
+        photo = prepare_photo(upload('IMG.jpg', photo_bytes(size=(1200, 900))))
+        waiting = save_photo(self.member, prepare_photo(upload('IMG.jpg', photo_bytes(size=(1200, 900)))))
+        reply = add_reply(self.thread, self.member, 'A photo.', [photo])
+        response = self.profile()
+        posted = reply.attachments.get()
+        self.assertContains(response, f'src="{posted.preview_url}"')
+        self.assertContains(response, f'href="{self.thread.get_absolute_url()}#post-{reply.pk}"')
+        self.assertNotContains(response, waiting.preview_url)  # not in a post yet, so not on show
+
+    def test_a_member_with_nothing_yet(self) -> None:
+        User.objects.create_user('newcomer', display_name='Newcomer')
+        response = self.client.get(reverse('member', args=['newcomer']))
+        self.assertContains(response, "Newcomer hasn't posted yet.")
+        self.assertContains(response, 'No threads started yet.')
+
+    def test_unknown_and_closed_accounts_are_not_found(self) -> None:
+        self.assertEqual(self.client.get(reverse('member', args=['nobody'])).status_code, 404)
+        User.objects.create_user('retired', is_active=False)
+        self.assertEqual(self.client.get(reverse('member', args=['retired'])).status_code, 404)
+
+    def test_usernames_with_symbols_work(self) -> None:
+        odd = User.objects.create_user('meera+trips@2026', display_name='Meera Again')
+        self.assertContains(self.client.get(odd.get_absolute_url()), '<h1>Meera Again</h1>', html=True)
+
+    def test_posts_and_threads_link_to_profiles(self) -> None:
+        url = self.member.get_absolute_url()
+        self.assertContains(self.client.get(self.thread.get_absolute_url()), f'href="{url}"')       # a post's author
+        self.assertContains(self.client.get(reverse('forum', args=['himalaya-and-ladakh'])), f'href="{url}"')
+        self.assertContains(self.client.get(reverse('index')), f'href="{url}"')                      # latest post on a forum row
+
+    def test_the_page_is_a_handful_of_queries(self) -> None:
+        with self.assertNumQueries(5):  # the member, their posts, their thread count, their threads, their photos
+            self.profile()
+
+
+class AvatarPreparationTests(SimpleTestCase):
+    def test_the_middle_is_cut_out_as_a_square(self) -> None:
+        avatar = prepare_avatar(upload('me.jpg', photo_bytes(size=(3000, 2000))))
+        with Image.open(avatar) as square:
+            self.assertEqual(square.size, (AVATAR_SIZE, AVATAR_SIZE))
+
+    def test_a_small_picture_is_cut_but_never_enlarged(self) -> None:
+        avatar = prepare_avatar(upload('tiny.png', photo_bytes('PNG', (120, 90)), 'image/png'))
+        with Image.open(avatar) as square:
+            self.assertEqual(square.size, (90, 90))
+        self.assertTrue(avatar.name.endswith('.png'))
+
+    def test_location_and_camera_details_are_removed(self) -> None:
+        avatar = prepare_avatar(upload('IMG_home.jpg', photo_bytes()))
+        data = avatar.read()
+        self.assertFalse(has_location(data))
+        self.assertNotIn(b'home', data)
+
+    def test_only_real_photos_are_accepted(self) -> None:
+        with self.assertRaises(ValidationError) as caught:
+            prepare_avatar(upload('notes.jpg', b'just some text pretending to be a photo'))
+        self.assertIn('notes.jpg', caught.exception.messages[0])
+
+
+class ProfileEditTests(TestCase):
+    """Members changing their own name and photo, from their profile page."""
+
+    media_root: str
+    member: User
+    other: User
+    thread: Thread
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.media_root = tempfile.mkdtemp()
+        cls.addClassCleanup(shutil.rmtree, cls.media_root, ignore_errors=True)
+        cls.enterClassContext(override_settings(MEDIA_ROOT=cls.media_root))
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera', password='chai-and-trails', display_name='Meera Iyer')
+        cls.other = User.objects.create_user('arjun', password='chai-and-trails', display_name='Arjun Sethi')
+        cls.thread = start_thread(
+            Forum.objects.get(slug='himalaya-and-ladakh'), cls.member, 'Spiti in June', 'Four riding days.')
+
+    def setUp(self) -> None:
+        self.client.force_login(self.member)
+
+    def edit(self, **fields: Any) -> HttpResponse:
+        """Send the profile form the way the page does: every field, changed or not."""
+        data: dict[str, Any] = {'display_name': self.member.display_name, **fields}
+        with self.captureOnCommitCallbacks(execute=True):  # the old file goes once the change commits
+            return self.client.post(self.member.get_absolute_url(), data)
+
+    def change_photo(self, name: str = 'me.jpg', content: bytes | None = None) -> HttpResponse:
+        return self.edit(avatar=upload(name, photo_bytes(size=(1200, 900)) if content is None else content))
+
+    def stored(self) -> User:
+        self.member.refresh_from_db()
+        return self.member
+
+    def test_the_photo_is_stored_square_and_cleaned(self) -> None:
+        response = self.change_photo()
+        self.assertRedirects(response, self.member.get_absolute_url())
+        avatar = self.stored().avatar
+        self.assertTrue(avatar)
+        self.assertRegex(avatar.name, r'^avatars/[0-9a-f]{32}\.jpg$')
+        with avatar.open('rb') as saved:
+            data = saved.read()
+        with Image.open(BytesIO(data)) as square:
+            self.assertEqual(square.size, (AVATAR_SIZE, AVATAR_SIZE))
+        self.assertFalse(has_location(data))
+
+    def test_pages_show_the_photo_in_place_of_the_letter(self) -> None:
+        self.change_photo()
+        url = self.stored().avatar.url
+        for page in [self.member.get_absolute_url(), self.thread.get_absolute_url(), reverse('index')]:
+            with self.subTest(page=page):
+                response = self.client.get(page)
+                self.assertContains(response, f'src="{url}"')
+        # Someone without a photo still gets their letter on a tinted square.
+        self.assertContains(self.client.get(self.other.get_absolute_url()), f'tone-{self.other.avatar_tone}')
+
+    def test_a_new_photo_replaces_the_old_file(self) -> None:
+        self.change_photo()
+        first = self.stored().avatar.name
+        self.change_photo('again.jpg')
+        second = self.stored().avatar.name
+        self.assertNotEqual(first, second)
+        self.assertFalse((Path(self.media_root) / first).exists())
+        self.assertTrue((Path(self.media_root) / second).exists())
+
+    def test_removing_the_photo_deletes_the_file(self) -> None:
+        self.change_photo()
+        name = self.stored().avatar.name
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.member.get_absolute_url(), {'remove': '1'})
+        self.assertRedirects(response, self.member.get_absolute_url())
+        self.assertFalse(self.stored().avatar)
+        self.assertFalse((Path(self.media_root) / name).exists())
+
+    def test_a_file_that_is_not_a_photo_is_refused(self) -> None:
+        response = self.change_photo('notes.jpg', b'just some text pretending to be a photo')
+        self.assertEqual(response.status_code, 200)  # the profile again, with the error on the form
+        self.assertContains(response, 'couldn’t be read as a photo')
+        self.assertFalse(self.stored().avatar)
+
+    def test_the_form_is_only_on_your_own_profile(self) -> None:
+        self.assertContains(self.client.get(self.member.get_absolute_url()), 'Edit your profile')
+        self.assertNotContains(self.client.get(self.other.get_absolute_url()), 'Edit your profile')
+        self.client.logout()
+        self.assertNotContains(self.client.get(self.member.get_absolute_url()), 'Edit your profile')
+
+    def test_the_name_can_be_changed(self) -> None:
+        response = self.edit(display_name='Meera I.')
+        self.assertRedirects(response, self.member.get_absolute_url())
+        self.assertEqual(self.stored().display_name, 'Meera I.')
+        # The new name is what posts and the profile show from now on.
+        self.assertContains(self.client.get(self.thread.get_absolute_url()), 'Meera I.')
+        self.assertContains(self.client.get(self.member.get_absolute_url()), '<h1>Meera I.</h1>', html=True)
+
+    def test_a_blank_name_goes_back_to_the_username(self) -> None:
+        self.edit(display_name='')
+        self.assertEqual(self.stored().display_name, 'meera')
+
+    def test_the_name_and_the_photo_save_together(self) -> None:
+        self.edit(display_name='Meera on tour', avatar=upload('me.jpg', photo_bytes(size=(900, 900))))
+        member = self.stored()
+        self.assertEqual(member.display_name, 'Meera on tour')
+        self.assertTrue(member.avatar)
+
+    def test_a_rejected_photo_leaves_the_name_alone(self) -> None:
+        response = self.edit(display_name='Meera I.', avatar=upload('notes.jpg', b'not a photo at all'))
+        self.assertContains(response, 'couldn’t be read as a photo')
+        member = self.stored()
+        self.assertEqual(member.display_name, 'Meera Iyer')  # nothing was saved
+        self.assertFalse(member.avatar)
+
+    def test_your_name_in_the_bar_links_to_your_profile(self) -> None:
+        response = self.client.get(reverse('index'))
+        self.assertContains(response, f'<a href="{self.member.get_absolute_url()}">Meera Iyer</a>', html=True)
+
+    def test_nobody_else_can_change_your_photo(self) -> None:
+        self.client.force_login(self.other)
+        response = self.client.post(self.member.get_absolute_url(), {'avatar': upload('me.jpg', photo_bytes())})
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(self.stored().avatar)
+
+    def test_a_visitor_is_sent_to_sign_in(self) -> None:
+        self.client.logout()
+        response = self.client.post(self.member.get_absolute_url(), {'remove': '1'})
+        self.assertRedirects(response, f"{reverse('login')}?next={self.member.get_absolute_url()}")
+
+    def test_a_moderator_can_take_a_photo_away(self) -> None:
+        self.change_photo()
+        name = self.stored().avatar.name
+        staff = User.objects.create_superuser('mod', password='chai-and-trails')
+        self.client.force_login(staff)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse('admin:forum_user_changelist'), {
+                'action': 'remove_profile_photo', '_selected_action': [str(self.member.pk)],
+            })
+        self.assertFalse(self.stored().avatar)
+        self.assertFalse((Path(self.media_root) / name).exists())
+
+
+class MembersPageTests(TestCase):
+    """The Members page: real people, in a chosen order, each linking to their profile."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        # Joined oldest first, and the earliest joiner has posted the most.
+        cls.people = [
+            User.objects.create_user(
+                name, display_name=display, location=place, rank=rank,
+                date_joined=timezone.now() - timedelta(days=days), post_count=posts,
+            )
+            for name, display, place, rank, days, posts in [
+                ('arjun', 'Arjun Sethi', 'Chandigarh', 'Moderator', 900, 6215),
+                ('meera', 'Meera Iyer', 'Bengaluru', 'Trail regular', 400, 1842),
+                ('dev', 'Dev Mahato', '', 'Member', 5, 47),
+            ]
+        ]
+
+    def members(self, query: str = '') -> HttpResponse:
+        return self.client.get(f"{reverse('members')}{query}")
+
+    def test_every_card_links_to_that_member(self) -> None:
+        response = self.members()
+        for member in self.people:
+            with self.subTest(member=member.username):
+                self.assertContains(
+                    response,
+                    f'<a class="member__name" href="{member.get_absolute_url()}">{member.display_name}</a>',
+                    html=True,
+                )
+
+    def test_a_card_says_who_they_are(self) -> None:
+        response = self.members()
+        self.assertContains(response, 'Moderator')
+        self.assertContains(response, 'Chandigarh')
+        self.assertContains(response, '6,215 posts')
+        self.assertContains(response, '3 people have signed up.')
+
+    def test_the_busiest_posters_come_first(self) -> None:
+        names = [member.display_name for member in self.members().context['members']]
+        self.assertEqual(names, ['Arjun Sethi', 'Meera Iyer', 'Dev Mahato'])
+
+    def test_the_newest_arrivals_can_come_first(self) -> None:
+        names = [member.display_name for member in self.members('?sort=newest').context['members']]
+        self.assertEqual(names, ['Dev Mahato', 'Meera Iyer', 'Arjun Sethi'])
+        self.assertContains(self.members('?sort=newest'), 'The newest arrivals first.')
+
+    def test_an_unknown_sort_falls_back_to_the_usual_one(self) -> None:
+        response = self.members('?sort=; DROP TABLE forum_user')
+        self.assertEqual(response.context['members'][0].display_name, 'Arjun Sethi')
+
+    def test_closed_accounts_are_not_listed(self) -> None:
+        User.objects.create_user('retired', display_name='Gone Away', is_active=False)
+        self.assertNotContains(self.members(), 'Gone Away')
+
+    def test_paging_keeps_the_order(self) -> None:
+        User.objects.bulk_create([
+            User(username=f'rider{number}', display_name=f'Rider {number}', post_count=number)
+            for number in range(MEMBERS_PER_PAGE)
+        ])
+        response = self.members('?sort=newest')
+        self.assertContains(response, 'href="?page=2&amp;sort=newest"')
+        second = self.members('?page=2&sort=newest')
+        self.assertEqual(second.context['page_obj'].number, 2)
+        self.assertEqual(second.context['sort'], 'newest')
+        # Every member appears exactly once across the two pages.
+        listed = [m.pk for m in response.context['members']] + [m.pk for m in second.context['members']]
+        self.assertEqual(len(listed), len(set(listed)))
+        self.assertEqual(len(listed), User.objects.filter(is_active=True).count())
+
+    def test_a_member_with_a_photo_shows_it_here(self) -> None:
+        # No file is written: the page only needs the field to have a name to link to.
+        User.objects.filter(username='meera').update(avatar='avatars/kaza.jpg')
+        self.assertContains(self.members(), 'avatars/kaza.jpg')
+
+
+class RecentPostersTests(TestCase):
+    """The index's "Recently posting" strip: real faces, newest poster first."""
+
+    forum: Forum
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        # A forum of its own rather than the imported ones, which arrive with their own posters.
+        cls.forum = Forum.objects.create(
+            category=Category.objects.create(slug='on-the-road', title='On the road'),
+            slug='himalaya', title='Himalaya', description='Passes and cold deserts.',
+        )
+
+    def posted(self, username: str, *, days_ago: float = 0, replies: int = 0) -> User:
+        member = User.objects.create_user(username, display_name=username.title())
+        thread = start_thread(self.forum, member, f'{username} in June', 'Four riding days.')
+        for _ in range(replies):
+            add_reply(thread, member, 'One more thing.')
+        when = timezone.now() - timedelta(days=days_ago)
+        Post.objects.filter(author=member).update(created_at=when)
+        return member
+
+    def strip(self) -> list[User]:
+        return list(self.client.get(reverse('index')).context['recent_posters'])
+
+    def test_the_faces_are_the_people_who_posted_lately(self) -> None:
+        meera = self.posted('meera', days_ago=2)
+        response = self.client.get(reverse('index'))
+        self.assertContains(response, f'<a href="{meera.get_absolute_url()}" title="Meera">')
+        self.assertContains(response, 'Recently posting')
+
+    def test_the_newest_poster_comes_first(self) -> None:
+        self.posted('arjun', days_ago=5)
+        self.posted('meera', days_ago=1)
+        self.assertEqual([member.display_name for member in self.strip()], ['Meera', 'Arjun'])
+
+    def test_somebody_who_posted_ten_times_appears_once(self) -> None:
+        self.posted('meera', replies=9)
+        self.assertEqual([member.display_name for member in self.strip()], ['Meera'])
+
+    def test_older_posts_and_closed_accounts_are_left_out(self) -> None:
+        self.posted('lastyear', days_ago=400)
+        User.objects.filter(username=self.posted('retired', days_ago=1).username).update(is_active=False)
+        self.assertEqual(self.strip(), [])
+        self.assertContains(self.client.get(reverse('index')), 'Nobody has posted in the last 7 days.')
+
+    def test_the_strip_holds_at_most_eight_faces(self) -> None:
+        for number in range(RECENT_FACES + 2):
+            self.posted(f'rider{number}', days_ago=1)
+        self.assertEqual(len(self.strip()), RECENT_FACES)
+
+
+class ForumNumbersTests(TestCase):
+    """The index sidebar's totals, which come from the counts posting keeps up to date."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+
+    def numbers(self) -> dict[str, Any]:
+        return self.client.get(reverse('index')).context['numbers']
+
+    def test_threads_and_posts_add_up_the_whole_board(self) -> None:
+        # Subforums count inside their parents, so the total is the top level's.
+        top_level = Forum.objects.filter(category__isnull=False)
+        self.assertEqual(self.numbers()['threads'], sum(forum.thread_count for forum in top_level))
+        self.assertEqual(self.numbers()['posts'], sum(forum.post_count for forum in top_level))
+
+    def test_a_new_post_moves_the_totals(self) -> None:
+        before = self.numbers()
+        member = User.objects.create_user('meera', display_name='Meera Iyer')
+        thread = start_thread(Forum.objects.get(slug='himalaya-and-ladakh'), member, 'Spiti in June', 'Four days.')
+        add_reply(thread, member, 'Batal by noon.')
+        after = self.numbers()
+        self.assertEqual(after['threads'], before['threads'] + 1)
+        self.assertEqual(after['posts'], before['posts'] + 2)
+
+    def test_a_subforums_posts_are_counted_once(self) -> None:
+        member = User.objects.create_user('arjun', display_name='Arjun Sethi')
+        before = self.numbers()['posts']
+        subforum = Forum.objects.filter(parent__isnull=False).first()
+        assert subforum is not None
+        start_thread(subforum, member, 'Hampta in July', 'Two nights out.')
+        self.assertEqual(self.numbers()['posts'], before + 1)
+
+    def test_members_are_counted_and_the_newest_is_named(self) -> None:
+        User.objects.create_user('early', display_name='Early Bird',
+                                 date_joined=timezone.now() - timedelta(days=30))
+        newest = User.objects.create_user('latest', display_name='Just Arrived')
+        User.objects.create_user('retired', display_name='Gone Away', is_active=False)
+        numbers = self.numbers()
+        self.assertEqual(numbers['members'], User.objects.filter(is_active=True).count())
+        self.assertEqual(numbers['newest'], newest)
+        response = self.client.get(reverse('index'))
+        self.assertContains(response, f'<a href="{newest.get_absolute_url()}">Just Arrived</a>', html=True)
+
+    def test_a_board_with_nothing_posted_shows_zeroes(self) -> None:
+        Forum.objects.update(thread_count=0, post_count=0)
+        numbers = self.numbers()
+        self.assertEqual((numbers['threads'], numbers['posts']), (0, 0))
+
+
+class EmptySiteTests(TestCase):
+    """The index before anyone has signed up: no counts, and nothing made up."""
+
+    def test_the_numbers_are_all_nothing(self) -> None:
+        response = self.client.get(reverse('index'))
+        numbers = response.context['numbers']
+        self.assertEqual((numbers['threads'], numbers['posts'], numbers['members']), (0, 0, 0))
+        self.assertIsNone(numbers['newest'])
+        self.assertContains(response, 'Nobody has posted in the last 7 days.')

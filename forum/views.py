@@ -1,3 +1,4 @@
+from datetime import timedelta
 from functools import cached_property
 from typing import Any, Final, TypedDict, cast
 
@@ -5,14 +6,15 @@ from django.contrib.auth import login
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import F, Prefetch, Q, QuerySet
+from django.db.models import Count, F, Max, OuterRef, Prefetch, Q, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods
-from django.views.generic import CreateView, ListView, View
+from django.views.generic import CreateView, DetailView, ListView, View
 
-from .forms import MAX_PHOTOS, NewThreadForm, RegistrationForm, ReplyForm, draft_key
+from .forms import MAX_PHOTOS, NewThreadForm, ProfileForm, RegistrationForm, ReplyForm, draft_key
 from .models import Attachment, Category, Forum, Post, Thread, User
 from .photos import MAX_UPLOAD_BYTES, prepare_photo
 from .posting import add_reply, discard_photos, save_photo, start_thread, waiting_photos
@@ -21,6 +23,19 @@ from .rendering import photo_markdown, render_body
 THREADS_PER_PAGE: Final[int] = 20
 POSTS_PER_PAGE: Final[int] = 20
 LATEST_TRIP_LOGS: Final[int] = 4
+# The index's "Recently posting" strip: how far back it looks, and how many faces fit.
+RECENT_POSTER_WINDOW: Final[timedelta] = timedelta(days=7)
+RECENT_FACES: Final[int] = 8
+MEMBERS_PER_PAGE: Final[int] = 24
+# What the Members page can be sorted by, and the ?sort= value that asks for it.
+MEMBER_ORDERINGS: Final[dict[str, list[str]]] = {
+    'posts': ['-post_count', 'username'],
+    'newest': ['-date_joined', 'username'],
+}
+DEFAULT_MEMBER_SORT: Final[str] = 'posts'
+PROFILE_POSTS: Final[int] = 10
+PROFILE_THREADS: Final[int] = 5
+PROFILE_PHOTOS: Final[int] = 6
 # Photos a member has uploaded that no post has claimed yet. Enough for a long trip report
 # in progress, few enough that the upload endpoint can't be used as free file hosting.
 MAX_WAITING_PHOTOS: Final[int] = 30
@@ -46,16 +61,54 @@ def forum_crumbs(forum: Forum, *, include_forum: bool) -> list[Crumb]:
     ]
 
 
+class ForumNumbers(TypedDict):
+    threads: int
+    posts: int
+    members: int
+    newest: User | None
+
+
+def forum_numbers(categories: list[Category], members: QuerySet[User]) -> ForumNumbers:
+    """The totals for the index sidebar.
+
+    Threads and posts are added up from the top-level forums already loaded for
+    the page, so they cost nothing and agree with the counts shown on the rows.
+    Only the top level is counted: posting adds to a forum and to every forum
+    above it, so a parent's count already holds its subforums'.
+    """
+    top_level = [forum for category in categories for forum in category.forums.all()]
+    return {
+        'threads': sum(forum.thread_count for forum in top_level),
+        'posts': sum(forum.post_count for forum in top_level),
+        'members': members.count(),
+        'newest': members.order_by('-date_joined').first(),
+    }
+
+
 def index(request: HttpRequest) -> HttpResponse:
-    categories = Category.objects.prefetch_related(
+    # A list, not a queryset: the totals below walk it, and the template then reuses
+    # what was loaded here instead of asking for the forums a second time.
+    categories = list(Category.objects.prefetch_related(
         Prefetch('forums', queryset=with_last_post(Forum.objects.all())),
         'forums__children',
-    )
+    ))
     trip_logs = (
         Thread.objects.filter(Q(forum__slug='trip-logs') | Q(forum__parent__slug='trip-logs'))
         .select_related('author').order_by('-created_at')[:LATEST_TRIP_LOGS]
     )
-    return render(request, 'index.html', {'categories': categories, 'trip_logs': trip_logs})
+    # Who has been posting lately. Annotating with each member's newest post groups by
+    # member, so someone who wrote ten replies this week appears once, not ten times.
+    members = User.objects.filter(is_active=True)
+    posted_lately = members.filter(
+        posts__created_at__gte=timezone.now() - RECENT_POSTER_WINDOW,
+    ).annotate(latest_post=Max('posts__created_at'))
+    return render(request, 'index.html', {
+        'categories': categories,
+        'trip_logs': trip_logs,
+        'recent_posters': posted_lately.order_by('-latest_post')[:RECENT_FACES],
+        'recent_days': RECENT_POSTER_WINDOW.days,
+        'numbers': forum_numbers(categories, members),
+    })
 
 
 class ElidedPagesMixin:
@@ -179,6 +232,97 @@ class NewThreadView(LoginRequiredMixin, PhotoEditorMixin, CreateView):
             data['forum'], cast(User, self.request.user), data['title'], data['body'], data['photos'], data['draft'],
         )
         return redirect(self.object)
+
+
+class MembersView(ElidedPagesMixin, ListView):
+    """Everyone who has signed up: the busiest posters first, or the newest arrivals.
+
+    Both orderings break ties on the username, so paging never shows the same
+    member twice or skips one when several share a post count or a join date.
+    """
+
+    template_name = 'members.html'
+    context_object_name = 'members'
+    paginate_by = MEMBERS_PER_PAGE
+
+    @cached_property
+    def sort(self) -> str:
+        chosen = self.request.GET.get('sort', '')
+        return chosen if chosen in MEMBER_ORDERINGS else DEFAULT_MEMBER_SORT
+
+    def get_queryset(self) -> QuerySet[User]:
+        return User.objects.filter(is_active=True).order_by(*MEMBER_ORDERINGS[self.sort])
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        # The pager links keep the ordering; without it, page 2 would start sorting afresh.
+        context.update(sort=self.sort, query='' if self.sort == DEFAULT_MEMBER_SORT else f'sort={self.sort}')
+        return context
+
+
+class MemberView(DetailView):
+    """A member's profile: who they are, and what they have posted lately.
+
+    Looking at your own also gives you the profile photo form, which posts back here.
+    """
+
+    template_name = 'profile.html'
+    context_object_name = 'member'
+    slug_field = 'username'
+    slug_url_kwarg = 'username'
+    # Closed accounts are hidden rather than shown as empty profiles.
+    queryset = User.objects.filter(is_active=True)
+
+    def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
+        """Change the name or photo, or take the photo away. Only the member's own profile."""
+        self.object = self.get_object()
+        if not request.user.is_authenticated:
+            return redirect_to_login(request.get_full_path())
+        if request.user != self.object:
+            raise PermissionDenied('You can only change your own profile.')
+
+        if 'remove' in request.POST:  # its own small form, so nothing else is being sent
+            self.object.set_avatar(None)
+            return redirect(self.object)
+        form = ProfileForm(request.POST, request.FILES, instance=self.object)
+        if form.is_valid():
+            form.save()
+            # Redirect rather than render, so reloading the profile doesn't send the photo again.
+            return redirect(self.object)
+        return self.render_to_response(self.get_context_data(profile_form=form))
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        member = self.object
+        is_owner = self.request.user == member
+        context['is_owner'] = is_owner
+        if is_owner:
+            context.setdefault('profile_form', ProfileForm(instance=member))
+        # How many posts come before each one in its thread, so the link can name the right page.
+        earlier = (
+            Post.objects.filter(thread=OuterRef('thread'), created_at__lt=OuterRef('created_at'))
+            .values('thread').annotate(total=Count('pk')).values('total')
+        )
+        posts = list(
+            member.posts.select_related('thread', 'thread__forum')
+            .annotate(earlier=Subquery(earlier))
+            .order_by('-created_at')[:PROFILE_POSTS]
+        )
+        for post in posts:
+            page = (post.earlier or 0) // POSTS_PER_PAGE + 1
+            post.url = f'{post.thread.get_absolute_url()}{f"?page={page}" if page > 1 else ""}#post-{post.pk}'
+
+        context.update(
+            breadcrumbs=[{'title': 'Members', 'url': reverse('members')}],
+            posts=posts,
+            threads=member.threads.select_related('forum').order_by('-created_at')[:PROFILE_THREADS],
+            thread_count=member.threads.count(),
+            photos=(
+                Attachment.objects.filter(uploader=member, post__isnull=False)
+                .select_related('post__thread').order_by('-created_at')[:PROFILE_PHOTOS]
+            ),
+        )
+        return context
 
 
 class PhotoUploadView(LoginRequiredMixin, View):

@@ -67,6 +67,27 @@
     });
   });
 
+  /* Profile photo: show the picked file before it is saved ----------------- */
+  var avatarInput = document.querySelector('[data-avatar-input]');
+  var avatarSpot = document.querySelector('[data-avatar-preview]');
+  if (avatarInput && avatarSpot) {
+    var shown = null;  // the last preview's object URL, so it can be released
+    avatarInput.addEventListener('change', function () {
+      var file = avatarInput.files && avatarInput.files[0];
+      if (!file || file.type.indexOf('image/') !== 0) { return; }
+      if (shown) { URL.revokeObjectURL(shown); }
+      shown = URL.createObjectURL(file);
+      // The server cuts the square out of the middle; object-fit shows the same here.
+      var preview = avatarSpot.querySelector('img') || avatarSpot.appendChild(document.createElement('img'));
+      preview.className = 'avatar avatar--photo avatar--lg';
+      preview.alt = '';
+      preview.setAttribute('aria-hidden', 'true');
+      preview.src = shown;
+      var letter = avatarSpot.querySelector('span.avatar');
+      if (letter) { letter.remove(); }
+    });
+  }
+
   /* Formatting buttons: wrap the selected text in Markdown ----------------- */
   var FORMATS = {
     bold: { before: '**', after: '**', example: 'bold text' },

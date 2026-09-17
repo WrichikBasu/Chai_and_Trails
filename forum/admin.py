@@ -2,6 +2,7 @@ from typing import Any
 
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.html import format_html
@@ -18,15 +19,33 @@ class UserAdmin(BaseUserAdmin):
     # Django's own fieldsets list first_name and last_name, which this model replaces.
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
-        ('Forum profile', {'fields': (*PROFILE_FIELDS, 'email', 'post_count')}),
+        ('Forum profile', {'fields': ('face', *PROFILE_FIELDS, 'email', 'post_count')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
     add_fieldsets = (*BaseUserAdmin.add_fieldsets, ('Forum profile', {'fields': (*PROFILE_FIELDS, 'email')}))
-    list_display = ('username', 'display_name', 'email', 'rank', 'location', 'date_joined', 'is_staff')
+    list_display = ('face', 'username', 'display_name', 'email', 'rank', 'location', 'date_joined', 'is_staff')
+    list_display_links = ('face', 'username')
     list_filter = (*BaseUserAdmin.list_filter, 'rank')
     search_fields = ('username', 'display_name', 'email')
-    readonly_fields = ('post_count',)
+    readonly_fields = ('post_count', 'face')
+    actions = ('remove_profile_photo',)
+
+    @admin.display(description='Photo')
+    def face(self, member: User) -> str:
+        """The member's photo, so an unsuitable one can be spotted in the list."""
+        if not member.avatar:
+            return '—'
+        return format_html('<img src="{}" alt="" style="height:2rem;border-radius:4px">', member.avatar.url)
+
+    @admin.action(description='Remove the profile photo')
+    def remove_profile_photo(self, request: HttpRequest, queryset: QuerySet[User]) -> None:
+        """Members set their own photo on the site, where it is checked and cleaned;
+        this only takes one away, leaving the member's tinted letter in its place."""
+        members = [member for member in queryset if member.avatar]
+        for member in members:
+            member.set_avatar(None)
+        self.message_user(request, f'Removed {len(members)} profile photo(s).')
 
 
 @admin.register(Category)

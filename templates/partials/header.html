@@ -8,7 +8,7 @@
     </ul>
     <div class="utility__me">
       {% if user.is_authenticated %}
-        <span>{{ user.display_name }}</span>
+        <a href="{{ user.get_absolute_url }}">{{ user.display_name }}</a>
         {# Logging out changes state, so it's a POST with a CSRF token, not a link. #}
         <form method="post" action="{% url 'logout' %}" style="display:inline">
           {% csrf_token %}

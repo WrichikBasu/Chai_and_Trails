@@ -1,6 +1,5 @@
 from django.contrib.auth import views as auth_views
 from django.urls import URLPattern, path
-from django.views.generic import TemplateView
 
 from . import views
 from .forms import LoginForm
@@ -14,7 +13,9 @@ urlpatterns: list[URLPattern] = [
     path('new-thread/', views.NewThreadView.as_view(), name='new_thread'),
     path('photos/upload/', views.PhotoUploadView.as_view(), name='photo_upload'),
     path('photos/<int:pk>/remove/', views.PhotoRemoveView.as_view(), name='photo_remove'),
-    path('members/', TemplateView.as_view(template_name='members.html'), name='members'),
+    path('members/', views.MembersView.as_view(), name='members'),
+    # Usernames allow @ . + - _ , which <slug:…> would refuse, so match the whole segment.
+    path('member/<str:username>/', views.MemberView.as_view(), name='member'),
     path('register/', views.register, name='register'),
     path(
         'login/',
