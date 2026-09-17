@@ -327,7 +327,10 @@ class RegistrationTests(TestCase):
         self.assertTrue(member.password.startswith('argon2$argon2id$'))
         self.assertTrue(member.check_password('monsoon-konkan-26'))
         self.assertEqual(int(self.client.session['_auth_user_id']), member.pk)
-        self.assertContains(self.client.get(reverse('index')), '<span>Meera Iyer</span>', html=True)
+        # The bar greets them by name, and the name links to their profile.
+        self.assertContains(
+            self.client.get(reverse('index')),
+            f'<a href="{member.get_absolute_url()}">Meera Iyer</a>', html=True)
 
     def test_registering_works_with_csrf_checks_on(self) -> None:
         browser = Client(enforce_csrf_checks=True)
@@ -377,7 +380,8 @@ class LoginTests(TestCase):
         response = self.client.post(reverse('login'), {'username': 'tenzin', 'password': 'high-passes-26'})
         self.assertRedirects(response, reverse('index'))
         index = self.client.get(reverse('index'))
-        self.assertContains(index, '<span>Tenzin Norbu</span>', html=True)
+        tenzin = User.objects.get(username='tenzin')
+        self.assertContains(index, f'<a href="{tenzin.get_absolute_url()}">Tenzin Norbu</a>', html=True)
         self.assertContains(index, f'action="{reverse("logout")}"')
 
         self.assertRedirects(self.client.post(reverse('logout')), reverse('index'))
@@ -1612,8 +1616,8 @@ class AvatarPreparationTests(SimpleTestCase):
         self.assertIn('notes.jpg', caught.exception.messages[0])
 
 
-class AvatarTests(TestCase):
-    """Members changing their own profile photo, from their profile page."""
+class ProfileEditTests(TestCase):
+    """Members changing their own name and photo, from their profile page."""
 
     media_root: str
     member: User
@@ -1638,12 +1642,14 @@ class AvatarTests(TestCase):
     def setUp(self) -> None:
         self.client.force_login(self.member)
 
-    def change_photo(self, name: str = 'me.jpg', content: bytes | None = None) -> HttpResponse:
+    def edit(self, **fields: Any) -> HttpResponse:
+        """Send the profile form the way the page does: every field, changed or not."""
+        data: dict[str, Any] = {'display_name': self.member.display_name, **fields}
         with self.captureOnCommitCallbacks(execute=True):  # the old file goes once the change commits
-            return self.client.post(
-                self.member.get_absolute_url(),
-                {'avatar': upload(name, photo_bytes(size=(1200, 900)) if content is None else content)},
-            )
+            return self.client.post(self.member.get_absolute_url(), data)
+
+    def change_photo(self, name: str = 'me.jpg', content: bytes | None = None) -> HttpResponse:
+        return self.edit(avatar=upload(name, photo_bytes(size=(1200, 900)) if content is None else content))
 
     def stored(self) -> User:
         self.member.refresh_from_db()
@@ -1696,10 +1702,39 @@ class AvatarTests(TestCase):
         self.assertFalse(self.stored().avatar)
 
     def test_the_form_is_only_on_your_own_profile(self) -> None:
-        self.assertContains(self.client.get(self.member.get_absolute_url()), 'Change your photo')
-        self.assertNotContains(self.client.get(self.other.get_absolute_url()), 'Change your photo')
+        self.assertContains(self.client.get(self.member.get_absolute_url()), 'Edit your profile')
+        self.assertNotContains(self.client.get(self.other.get_absolute_url()), 'Edit your profile')
         self.client.logout()
-        self.assertNotContains(self.client.get(self.member.get_absolute_url()), 'Change your photo')
+        self.assertNotContains(self.client.get(self.member.get_absolute_url()), 'Edit your profile')
+
+    def test_the_name_can_be_changed(self) -> None:
+        response = self.edit(display_name='Meera I.')
+        self.assertRedirects(response, self.member.get_absolute_url())
+        self.assertEqual(self.stored().display_name, 'Meera I.')
+        # The new name is what posts and the profile show from now on.
+        self.assertContains(self.client.get(self.thread.get_absolute_url()), 'Meera I.')
+        self.assertContains(self.client.get(self.member.get_absolute_url()), '<h1>Meera I.</h1>', html=True)
+
+    def test_a_blank_name_goes_back_to_the_username(self) -> None:
+        self.edit(display_name='')
+        self.assertEqual(self.stored().display_name, 'meera')
+
+    def test_the_name_and_the_photo_save_together(self) -> None:
+        self.edit(display_name='Meera on tour', avatar=upload('me.jpg', photo_bytes(size=(900, 900))))
+        member = self.stored()
+        self.assertEqual(member.display_name, 'Meera on tour')
+        self.assertTrue(member.avatar)
+
+    def test_a_rejected_photo_leaves_the_name_alone(self) -> None:
+        response = self.edit(display_name='Meera I.', avatar=upload('notes.jpg', b'not a photo at all'))
+        self.assertContains(response, 'couldn’t be read as a photo')
+        member = self.stored()
+        self.assertEqual(member.display_name, 'Meera Iyer')  # nothing was saved
+        self.assertFalse(member.avatar)
+
+    def test_your_name_in_the_bar_links_to_your_profile(self) -> None:
+        response = self.client.get(reverse('index'))
+        self.assertContains(response, f'<a href="{self.member.get_absolute_url()}">Meera Iyer</a>', html=True)
 
     def test_nobody_else_can_change_your_photo(self) -> None:
         self.client.force_login(self.other)

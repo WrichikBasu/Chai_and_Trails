@@ -954,20 +954,26 @@ textarea.control { min-height: 11rem; resize: vertical; }
 }
 .profile__excerpt { display: block; color: var(--muted); font-size: var(--t-sm); margin-top: 0.25rem; }
 
-/* Changing your own photo: shut until asked for, and it spans the header when open. */
-.avatar-edit { grid-column: 1 / -1; margin-top: 0.75rem; }
-.avatar-edit summary {
+/* Changing your own name and photo: shut until asked for, and it spans the header when open. */
+.profile-edit { grid-column: 1 / -1; margin-top: 0.75rem; }
+.profile-edit summary {
   display: inline-block;
   cursor: pointer;
   color: var(--muted);
   font-size: var(--t-sm);
   font-weight: 700;
 }
-.avatar-edit summary:hover { color: var(--chai); }
-.avatar-edit form { max-width: 32rem; margin-top: 0.75rem; }
-.avatar-edit .field { margin-bottom: 0.75rem; }
-.avatar-edit__acts { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
-.mini--posts li { align-items: start; }
+.profile-edit summary:hover { color: var(--chai); }
+.profile-edit__panel { max-width: 32rem; margin-top: 0.75rem; }
+.profile-edit .field { margin-bottom: 0.75rem; }
+/* "Remove photo" is its own form, so it sits under the save button; the negative
+   start margin cancels the quiet button's padding and lines the two labels up. */
+.profile-edit__panel form + form { margin-top: 0.4rem; margin-inline-start: -0.5rem; }
+/* Recent posts fill their block, so each row carries the padding .block__body
+   would otherwise give the list, and a rule to separate it from the one above. */
+.mini--posts { gap: 0; }
+.mini--posts li { align-items: start; padding: 0.8rem 1rem; border-top: 1px solid var(--rule); }
+.mini--posts li:first-child { border-top: 0; }
 
 /* A member's latest photos, each linking to the post it appears in. */
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: 0.5rem; list-style: none; margin: 0; padding: 0; }

@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView, DetailView, ListView, View
 
-from .forms import MAX_PHOTOS, AvatarForm, NewThreadForm, RegistrationForm, ReplyForm, draft_key
+from .forms import MAX_PHOTOS, NewThreadForm, ProfileForm, RegistrationForm, ReplyForm, draft_key
 from .models import Attachment, Category, Forum, Post, Thread, User
 from .photos import MAX_UPLOAD_BYTES, prepare_photo
 from .posting import add_reply, discard_photos, save_photo, start_thread, waiting_photos
@@ -198,22 +198,22 @@ class MemberView(DetailView):
     queryset = User.objects.filter(is_active=True)
 
     def post(self, request: HttpRequest, *args: Any, **kwargs: Any) -> HttpResponse:
-        """Change or remove the profile photo. Only the member's own."""
+        """Change the name or photo, or take the photo away. Only the member's own profile."""
         self.object = self.get_object()
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
         if request.user != self.object:
-            raise PermissionDenied('You can only change your own profile photo.')
+            raise PermissionDenied('You can only change your own profile.')
 
-        if 'remove' in request.POST:
+        if 'remove' in request.POST:  # its own small form, so nothing else is being sent
             self.object.set_avatar(None)
             return redirect(self.object)
-        form = AvatarForm(request.POST, request.FILES)
+        form = ProfileForm(request.POST, request.FILES, instance=self.object)
         if form.is_valid():
-            self.object.set_avatar(form.cleaned_data['avatar'])
-            # Redirect rather than render, so reloading the profile doesn't offer to send the photo again.
+            form.save()
+            # Redirect rather than render, so reloading the profile doesn't send the photo again.
             return redirect(self.object)
-        return self.render_to_response(self.get_context_data(avatar_form=form))
+        return self.render_to_response(self.get_context_data(profile_form=form))
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
@@ -221,7 +221,7 @@ class MemberView(DetailView):
         is_owner = self.request.user == member
         context['is_owner'] = is_owner
         if is_owner:
-            context.setdefault('avatar_form', AvatarForm())
+            context.setdefault('profile_form', ProfileForm(instance=member))
         # How many posts come before each one in its thread, so the link can name the right page.
         earlier = (
             Post.objects.filter(thread=OuterRef('thread'), created_at__lt=OuterRef('created_at'))

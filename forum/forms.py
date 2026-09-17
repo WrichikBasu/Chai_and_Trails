@@ -132,12 +132,17 @@ class PhotosField(forms.FileField):
         return photos
 
 
-class AvatarForm(forms.Form):
-    """The profile photo a member picks for themselves, cleaned before it is stored."""
+class ProfileForm(forms.ModelForm):
+    """What a member can change about themselves on their own profile.
+
+    The photo is declared here rather than taken from the model: User.avatar is
+    not editable, so that every stored file has been through forum.photos. It is
+    cleaned into a prepared image by clean_avatar() and put in place by save().
+    """
 
     avatar = forms.FileField(
         label='Profile photo',
-        error_messages={'required': 'Choose a photo to use.'},
+        required=False,  # they may be changing only their name
         help_text=(
             f'JPEG, PNG or WebP, up to {MAX_UPLOAD_BYTES // (1024 * 1024)} MB. The middle is cut out as a square. '
             'Location and camera details are removed before anything is stored.'
@@ -148,12 +153,25 @@ class AvatarForm(forms.Form):
         }),
     )
 
+    class Meta:
+        model = User
+        fields = ('display_name',)
+        labels = {'display_name': 'Name'}
+        help_texts = {'display_name': 'Shown on every post. Leave it blank to go back to your username.'}
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         style_controls(self)
 
-    def clean_avatar(self) -> ContentFile:
-        return prepare_avatar(self.cleaned_data['avatar'])
+    def clean_avatar(self) -> ContentFile | None:
+        upload = self.cleaned_data['avatar']
+        return prepare_avatar(upload) if upload else None
+
+    def save(self, commit: bool = True) -> User:
+        member: User = super().save(commit)  # the name; User.save() falls back to the username when it is blank
+        if commit and self.cleaned_data.get('avatar'):
+            member.set_avatar(self.cleaned_data['avatar'])
+        return member
 
 
 def draft_field() -> forms.CharField:

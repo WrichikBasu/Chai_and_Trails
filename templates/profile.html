@@ -33,25 +33,31 @@
 
   {% if is_owner %}
     {# Only on your own profile. <details> so it stays out of the way until wanted, without script. #}
-    <details class="avatar-edit"{% if avatar_form.errors %} open{% endif %}>
-      <summary>Change your photo</summary>
-      <form method="post" enctype="multipart/form-data" novalidate>
-        {% csrf_token %}
-        <div class="field">
-          <label for="{{ avatar_form.avatar.id_for_label }}">{{ avatar_form.avatar.label }}</label>
-          {{ avatar_form.avatar }}
-          {% if avatar_form.avatar.errors %}
-            <ul class="errors">{% for error in avatar_form.avatar.errors %}<li>{{ error }}</li>{% endfor %}</ul>
-          {% endif %}
-          <p class="hint">{{ avatar_form.avatar.help_text }}</p>
-        </div>
-        <div class="avatar-edit__acts">
-          <button class="btn btn--board" type="submit">Save photo</button>
-          {% if member.avatar %}
+    <details class="profile-edit"{% if profile_form.errors %} open{% endif %}>
+      <summary>Edit your profile</summary>
+      <div class="profile-edit__panel">
+        <form method="post" enctype="multipart/form-data" novalidate>
+          {% csrf_token %}
+          {% for field in profile_form %}
+            <div class="field">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}
+                <ul class="errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+              {% endif %}
+              <p class="hint">{{ field.help_text }}</p>
+            </div>
+          {% endfor %}
+          <button class="btn btn--board" type="submit">Save changes</button>
+        </form>
+        {% if member.avatar %}
+          {# Its own form: taking the photo away is not part of saving the rest. #}
+          <form method="post">
+            {% csrf_token %}
             <button class="btn btn--quiet" type="submit" name="remove" value="1">Remove photo</button>
-          {% endif %}
-        </div>
-      </form>
+          </form>
+        {% endif %}
+      </div>
     </details>
   {% endif %}
 </section>
