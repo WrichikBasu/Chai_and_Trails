@@ -21,6 +21,13 @@ from .rendering import photo_markdown, render_body
 THREADS_PER_PAGE: Final[int] = 20
 POSTS_PER_PAGE: Final[int] = 20
 LATEST_TRIP_LOGS: Final[int] = 4
+MEMBERS_PER_PAGE: Final[int] = 24
+# What the Members page can be sorted by, and the ?sort= value that asks for it.
+MEMBER_ORDERINGS: Final[dict[str, list[str]]] = {
+    'posts': ['-post_count', 'username'],
+    'newest': ['-date_joined', 'username'],
+}
+DEFAULT_MEMBER_SORT: Final[str] = 'posts'
 PROFILE_POSTS: Final[int] = 10
 PROFILE_THREADS: Final[int] = 5
 PROFILE_PHOTOS: Final[int] = 6
@@ -182,6 +189,32 @@ class NewThreadView(LoginRequiredMixin, PhotoEditorMixin, CreateView):
             data['forum'], cast(User, self.request.user), data['title'], data['body'], data['photos'], data['draft'],
         )
         return redirect(self.object)
+
+
+class MembersView(ElidedPagesMixin, ListView):
+    """Everyone who has signed up: the busiest posters first, or the newest arrivals.
+
+    Both orderings break ties on the username, so paging never shows the same
+    member twice or skips one when several share a post count or a join date.
+    """
+
+    template_name = 'members.html'
+    context_object_name = 'members'
+    paginate_by = MEMBERS_PER_PAGE
+
+    @cached_property
+    def sort(self) -> str:
+        chosen = self.request.GET.get('sort', '')
+        return chosen if chosen in MEMBER_ORDERINGS else DEFAULT_MEMBER_SORT
+
+    def get_queryset(self) -> QuerySet[User]:
+        return User.objects.filter(is_active=True).order_by(*MEMBER_ORDERINGS[self.sort])
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        # The pager links keep the ordering; without it, page 2 would start sorting afresh.
+        context.update(sort=self.sort, query='' if self.sort == DEFAULT_MEMBER_SORT else f'sort={self.sort}')
+        return context
 
 
 class MemberView(DetailView):

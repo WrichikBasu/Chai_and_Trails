@@ -1,7 +1,9 @@
+{# `query` is anything else the page's address carries (the Members page's sort); #}
+{# without it, following a pager link would drop the ordering and start again. #}
 {% if page_obj.paginator.num_pages > 1 %}
 <nav class="pager" aria-label="Pagination">
   {% if page_obj.has_previous %}
-    <a href="?page={{ page_obj.previous_page_number }}" rel="prev">Previous</a>
+    <a href="?page={{ page_obj.previous_page_number }}{% if query %}&amp;{{ query }}{% endif %}" rel="prev">Previous</a>
   {% endif %}
   {% for number in page_range %}
     {% if number == page_obj.paginator.ELLIPSIS %}
@@ -9,11 +11,11 @@
     {% elif number == page_obj.number %}
       <span aria-current="page">{{ number }}</span>
     {% else %}
-      <a href="?page={{ number }}">{{ number }}</a>
+      <a href="?page={{ number }}{% if query %}&amp;{{ query }}{% endif %}">{{ number }}</a>
     {% endif %}
   {% endfor %}
   {% if page_obj.has_next %}
-    <a href="?page={{ page_obj.next_page_number }}" rel="next">Next</a>
+    <a href="?page={{ page_obj.next_page_number }}{% if query %}&amp;{{ query }}{% endif %}" rel="next">Next</a>
   {% endif %}
 </nav>
 {% endif %}

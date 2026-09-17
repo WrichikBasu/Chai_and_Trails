@@ -33,7 +33,7 @@ from .photos import AVATAR_SIZE, MAX_UPLOAD_BYTES, prepare_avatar, prepare_photo
 from .posting import add_reply, save_photo, start_thread, waiting_photos
 from .rendering import photo_ids, render_body
 from .templatetags.forum_extras import compact_count, forum_time
-from .views import MAX_WAITING_PHOTOS, POSTS_PER_PAGE
+from .views import MAX_WAITING_PHOTOS, MEMBERS_PER_PAGE, POSTS_PER_PAGE
 
 
 class UserModelTests(TestCase):
@@ -1758,3 +1758,79 @@ class ProfileEditTests(TestCase):
             })
         self.assertFalse(self.stored().avatar)
         self.assertFalse((Path(self.media_root) / name).exists())
+
+
+class MembersPageTests(TestCase):
+    """The Members page: real people, in a chosen order, each linking to their profile."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        # Joined oldest first, and the earliest joiner has posted the most.
+        cls.people = [
+            User.objects.create_user(
+                name, display_name=display, location=place, rank=rank,
+                date_joined=timezone.now() - timedelta(days=days), post_count=posts,
+            )
+            for name, display, place, rank, days, posts in [
+                ('arjun', 'Arjun Sethi', 'Chandigarh', 'Moderator', 900, 6215),
+                ('meera', 'Meera Iyer', 'Bengaluru', 'Trail regular', 400, 1842),
+                ('dev', 'Dev Mahato', '', 'Member', 5, 47),
+            ]
+        ]
+
+    def members(self, query: str = '') -> HttpResponse:
+        return self.client.get(f"{reverse('members')}{query}")
+
+    def test_every_card_links_to_that_member(self) -> None:
+        response = self.members()
+        for member in self.people:
+            with self.subTest(member=member.username):
+                self.assertContains(
+                    response,
+                    f'<a class="member__name" href="{member.get_absolute_url()}">{member.display_name}</a>',
+                    html=True,
+                )
+
+    def test_a_card_says_who_they_are(self) -> None:
+        response = self.members()
+        self.assertContains(response, 'Moderator')
+        self.assertContains(response, 'Chandigarh')
+        self.assertContains(response, '6,215 posts')
+        self.assertContains(response, '3 people have signed up.')
+
+    def test_the_busiest_posters_come_first(self) -> None:
+        names = [member.display_name for member in self.members().context['members']]
+        self.assertEqual(names, ['Arjun Sethi', 'Meera Iyer', 'Dev Mahato'])
+
+    def test_the_newest_arrivals_can_come_first(self) -> None:
+        names = [member.display_name for member in self.members('?sort=newest').context['members']]
+        self.assertEqual(names, ['Dev Mahato', 'Meera Iyer', 'Arjun Sethi'])
+        self.assertContains(self.members('?sort=newest'), 'The newest arrivals first.')
+
+    def test_an_unknown_sort_falls_back_to_the_usual_one(self) -> None:
+        response = self.members('?sort=; DROP TABLE forum_user')
+        self.assertEqual(response.context['members'][0].display_name, 'Arjun Sethi')
+
+    def test_closed_accounts_are_not_listed(self) -> None:
+        User.objects.create_user('retired', display_name='Gone Away', is_active=False)
+        self.assertNotContains(self.members(), 'Gone Away')
+
+    def test_paging_keeps_the_order(self) -> None:
+        User.objects.bulk_create([
+            User(username=f'rider{number}', display_name=f'Rider {number}', post_count=number)
+            for number in range(MEMBERS_PER_PAGE)
+        ])
+        response = self.members('?sort=newest')
+        self.assertContains(response, 'href="?page=2&amp;sort=newest"')
+        second = self.members('?page=2&sort=newest')
+        self.assertEqual(second.context['page_obj'].number, 2)
+        self.assertEqual(second.context['sort'], 'newest')
+        # Every member appears exactly once across the two pages.
+        listed = [m.pk for m in response.context['members']] + [m.pk for m in second.context['members']]
+        self.assertEqual(len(listed), len(set(listed)))
+        self.assertEqual(len(listed), User.objects.filter(is_active=True).count())
+
+    def test_a_member_with_a_photo_shows_it_here(self) -> None:
+        # No file is written: the page only needs the field to have a name to link to.
+        User.objects.filter(username='meera').update(avatar='avatars/kaza.jpg')
+        self.assertContains(self.members(), 'avatars/kaza.jpg')
