@@ -2028,3 +2028,42 @@ class WhatsNewTests(TestCase):
         for page in [reverse('index'), reverse('members'), reverse('forum', args=[self.himalaya.slug])]:
             with self.subTest(page=page):
                 self.assertContains(self.client.get(page), f'href="{url}"')
+
+
+class NavHighlightTests(TestCase):
+    """Which main-nav item is lit up on each page."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        import_forums()
+        cls.member = User.objects.create_user('meera', display_name='Meera Iyer')
+
+    def lit(self, url: str) -> list[str]:
+        """The nav items marked as the current page."""
+        body = self.client.get(url).content.decode()
+        return re.findall(r'<a href="[^"]*" aria-current="page">([^<]+)</a>', body)
+
+    def test_a_section_with_its_own_nav_item_lights_that_item(self) -> None:
+        self.assertEqual(self.lit(reverse('forum', args=['trip-logs'])), ['Trip logs'])
+        self.assertEqual(self.lit(reverse('forum', args=['route-notes'])), ['Route notes'])
+
+    def test_a_subforum_lights_the_section_above_it(self) -> None:
+        subforum = Forum.objects.filter(parent__slug='trip-logs').first()
+        assert subforum is not None
+        self.assertEqual(self.lit(reverse('forum', args=[subforum.slug])), ['Trip logs'])
+
+    def test_a_thread_lights_the_section_it_is_in(self) -> None:
+        trip_logs = Forum.objects.get(slug='trip-logs')
+        thread = start_thread(trip_logs, self.member, 'Spiti in June', 'Four riding days.')
+        self.assertEqual(self.lit(thread.get_absolute_url()), ['Trip logs'])
+
+    def test_anywhere_else_lights_forums(self) -> None:
+        other = Forum.objects.exclude(slug__in=['trip-logs', 'route-notes']).filter(parent__isnull=True).first()
+        assert other is not None
+        self.assertEqual(self.lit(reverse('forum', args=[other.slug])), ['Forums'])
+        self.assertEqual(self.lit(reverse('index')), ['Forums'])
+
+    def test_the_other_pages_light_their_own_item(self) -> None:
+        self.assertEqual(self.lit(reverse('whats_new')), ["What's new"])
+        self.assertEqual(self.lit(reverse('members')), ['Members'])
+        self.assertEqual(self.lit(self.member.get_absolute_url()), ['Members'])

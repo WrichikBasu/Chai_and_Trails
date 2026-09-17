@@ -5,6 +5,8 @@
 
 {% block description %}{{ forum.description }}{% endblock %}
 
+{% block header %}{% include "partials/header.html" with active=nav_active %}{% endblock %}
+
 {% block crumbs %}{% include "partials/crumbs.html" with current=forum.title %}{% endblock %}
 
 {% block content %}

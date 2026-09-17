@@ -26,6 +26,8 @@ from .rendering import photo_markdown, render_body
 THREADS_PER_PAGE: Final[int] = 20
 POSTS_PER_PAGE: Final[int] = 20
 LATEST_TRIP_LOGS: Final[int] = 4
+# Forums with a main-nav item of their own, by slug (see partials/header.html).
+NAV_SECTIONS: Final[frozenset[str]] = frozenset({'trip-logs', 'route-notes'})
 # The index's "Recently posting" strip: how far back it looks, and how many faces fit.
 RECENT_POSTER_WINDOW: Final[timedelta] = timedelta(days=7)
 RECENT_FACES: Final[int] = 8
@@ -54,14 +56,33 @@ def with_last_post(forums: QuerySet[Forum]) -> QuerySet[Forum]:
     return forums.select_related('last_post__thread', 'last_post__author')
 
 
-def forum_crumbs(forum: Forum, *, include_forum: bool) -> list[Crumb]:
+def forum_chain(forum: Forum) -> list[Forum]:
+    """A forum and every forum above it, outermost first. Walked once per page: the
+    breadcrumbs and the main-nav highlight are both worked out from it."""
+    return [*forum.ancestors(), forum]
+
+
+def forum_crumbs(chain: list[Forum], *, include_forum: bool) -> list[Crumb]:
     """The category, then each parent forum (and the forum itself for pages inside it)."""
-    parents = forum.ancestors()
-    category = (parents[0] if parents else forum).category
+    category = chain[0].category
+    forums = chain if include_forum else chain[:-1]
     return [
         {'title': category.title, 'url': f"{reverse('index')}#cat-{category.slug}"},
-        *({'title': f.title, 'url': reverse('forum', args=[f.slug])} for f in [*parents, *([forum] if include_forum else [])]),
+        *({'title': f.title, 'url': reverse('forum', args=[f.slug])} for f in forums),
     ]
+
+
+def nav_section(chain: list[Forum]) -> str:
+    """Which main-nav item to light up for a page inside this forum.
+
+    Two sections have their own nav item, so a subforum or thread under them
+    highlights that item rather than Forums: a thread in Trip logs › On foot
+    belongs to Trip logs as far as the nav is concerned.
+    """
+    for forum in chain:
+        if forum.slug in NAV_SECTIONS:
+            return forum.slug
+    return 'forums'
 
 
 class ForumNumbers(TypedDict):
@@ -159,12 +180,20 @@ class ForumView(ElidedPagesMixin, ListView):
             slug=self.kwargs['slug'],
         )
 
+    @cached_property
+    def chain(self) -> list[Forum]:
+        return forum_chain(self.forum)
+
     def get_queryset(self) -> QuerySet[Thread]:
         return self.forum.threads.select_related('author', 'last_post__author')
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        context.update(forum=self.forum, breadcrumbs=forum_crumbs(self.forum, include_forum=False))
+        context.update(
+            forum=self.forum,
+            breadcrumbs=forum_crumbs(self.chain, include_forum=False),
+            nav_active=nav_section(self.chain),
+        )
         return context
 
 
@@ -209,7 +238,12 @@ class ThreadView(PhotoEditorMixin, ElidedPagesMixin, ListView):
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
         context.setdefault('form', ReplyForm())
-        context.update(thread=self.thread, breadcrumbs=forum_crumbs(self.thread.forum, include_forum=True))
+        chain = forum_chain(self.thread.forum)
+        context.update(
+            thread=self.thread,
+            breadcrumbs=forum_crumbs(chain, include_forum=True),
+            nav_active=nav_section(chain),
+        )
         return context
 
 
