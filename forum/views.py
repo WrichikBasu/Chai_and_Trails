@@ -14,6 +14,7 @@ from django.http import (
     Http404, HttpRequest, HttpResponse, HttpResponsePermanentRedirect, HttpResponseRedirect, JsonResponse,
 )
 from django.shortcuts import get_object_or_404, redirect, render
+from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import urlencode
@@ -497,6 +498,16 @@ class PhotoRemoveView(LoginRequiredMixin, View):
         photo = get_object_or_404(Attachment, pk=kwargs['pk'], uploader=request.user, post__isnull=True)
         discard_photos([photo])
         return HttpResponse(status=204)
+
+
+def favicon(request: HttpRequest) -> HttpResponse:
+    """Browsers ask the site root for /favicon.ico whatever the pages link, so send them on.
+
+    A temporary redirect on purpose: static files are served under a hashed name in
+    production, so the address of the icon changes whenever the icon does, and a 301
+    would sit in browser caches pointing at the old one.
+    """
+    return redirect(static('img/favicon-32.png'))
 
 
 @require_http_methods(['GET', 'POST'])

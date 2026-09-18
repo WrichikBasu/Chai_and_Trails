@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Chai &amp; Trails">
+  <!-- The masthead's milestone, redrawn for a tab: at 16 px the road curve and baseline of the
+       full mark turn to mush, so only the stone and the arrow survive, with fatter strokes.
+       Left transparent, so the stone reads on a light or a dark tab bar. -->
+  <path d="M4 14a12 12 0 0 1 24 0v11.5a2.5 2.5 0 0 1-2.5 2.5h-19A2.5 2.5 0 0 1 4 25.5Z" fill="#f2b01e"/>
+  <path d="M16 23V9M10.5 14.5 16 9l5.5 5.5" fill="none" stroke="#0c5c43" stroke-width="3.2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

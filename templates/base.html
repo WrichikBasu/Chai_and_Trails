@@ -6,6 +6,10 @@
 <title>{% block title %}Chai &amp; Trails: India travel forum{% endblock %}</title>
 <meta name="description" content="{% block description %}A travel forum for road trips, treks and slow journeys across India.{% endblock %}">
 <meta name="theme-color" content="#0c5c43">
+{# The milestone from the masthead. SVG for browsers that take one, PNG for the rest. #}
+<link rel="icon" href="{% static 'img/favicon.svg' %}" type="image/svg+xml">
+<link rel="icon" href="{% static 'img/favicon-32.png' %}" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
 {# First in <head>: sets the saved theme before the first paint, without waiting for fonts. #}
 <script src="{% static 'js/theme.js' %}"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">

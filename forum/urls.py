@@ -13,6 +13,8 @@ urlpatterns: list[URLPattern] = [
     path('new-thread/', views.NewThreadView.as_view(), name='new_thread'),
     path('photos/upload/', views.PhotoUploadView.as_view(), name='photo_upload'),
     path('photos/<int:pk>/remove/', views.PhotoRemoveView.as_view(), name='photo_remove'),
+    # Requested by browsers on their own, from the root, not by anything on the page.
+    path('favicon.ico', views.favicon),
     path('search/', views.search, name='search'),
     path('whats-new/', views.whats_new, name='whats_new'),
     path('members/', views.MembersView.as_view(), name='members'),

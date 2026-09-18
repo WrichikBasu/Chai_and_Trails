@@ -410,9 +410,30 @@ class LoginTests(TestCase):
 
 class StaticAssetTests(TestCase):
     def test_shared_assets_are_found(self) -> None:
-        for path in ['css/site.css', 'js/site.js', 'js/theme.js']:
+        for path in ['css/site.css', 'js/site.js', 'js/theme.js',
+                     'img/favicon.svg', 'img/favicon-32.png', 'img/apple-touch-icon.png']:
             with self.subTest(path=path):
                 self.assertIsNotNone(finders.find(path))
+
+    def test_every_page_carries_the_tab_icon(self) -> None:
+        response = self.client.get(reverse('index'))
+        self.assertContains(response, f'<link rel="icon" href="{static("img/favicon.svg")}" type="image/svg+xml">')
+        self.assertContains(response, f'href="{static("img/apple-touch-icon.png")}"')
+
+    def test_the_root_favicon_request_is_sent_to_the_icon(self) -> None:
+        # Browsers ask for /favicon.ico by themselves; without this it is a 404 in the log.
+        response = self.client.get('/favicon.ico')
+        self.assertRedirects(response, static('img/favicon-32.png'), fetch_redirect_response=False)
+        self.assertEqual(response.status_code, 302)  # not 301: the address changes when the icon does
+
+    def test_the_icon_is_a_real_image_of_the_right_size(self) -> None:
+        # The PNGs are rasterised from the SVGs; a wrong size here means they were rebuilt badly.
+        for path, size in [('img/favicon-32.png', (32, 32)), ('img/apple-touch-icon.png', (180, 180))]:
+            with self.subTest(path=path), Image.open(finders.find(path)) as icon:
+                self.assertEqual(icon.size, size)
+        svg = Path(finders.find('img/favicon.svg')).read_text(encoding='utf-8')
+        self.assertIn('viewBox="0 0 32 32"', svg)
+        self.assertIn('#f2b01e', svg)  # the same milestone yellow as the masthead mark
 
     def test_quote_button_script_has_no_raw_line_break_in_a_string(self) -> None:
         # Regression: the quote stub once held literal line breaks, a syntax error that stopped the whole script.
