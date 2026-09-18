@@ -45,6 +45,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.humanize',
+    # Full-text search: registers the lookups the search_vector columns are queried with.
+    'django.contrib.postgres',
     'forum.apps.ForumConfig',
 ]
 

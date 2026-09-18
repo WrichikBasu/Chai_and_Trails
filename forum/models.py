@@ -6,6 +6,8 @@ from typing import Any, Final
 from anyascii import anyascii
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVector, SearchVectorField
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 from django.db import models, transaction
@@ -16,6 +18,9 @@ from django.utils.text import slugify
 # How long a forum's milestone marker stays lit after its latest post. A stand-in
 # until per-member unread tracking exists.
 FRESH_WINDOW: Final[timedelta] = timedelta(hours=3)
+
+# The dictionary PostgreSQL stems and stops words with. Searching uses the same one.
+SEARCH_CONFIG: Final[str] = 'english'
 
 SLUG_MAX_LENGTH: Final[int] = 60
 SLUG_FALLBACK: Final[str] = 'thread'
@@ -195,9 +200,23 @@ class Thread(models.Model):
     # Copy of last_post.created_at, so "Recent activity" sorts on one indexed column.
     last_posted_at = models.DateTimeField(default=timezone.now)
 
+    search_vector = models.GeneratedField(
+        expression=SearchVector('title', config=SEARCH_CONFIG),
+        output_field=SearchVectorField(),
+        db_persist=True,
+    )
+    '''
+    The title, as PostgreSQL's search sees it: words cut down to their stems, so a
+    search for "camping" finds "camped". PostgreSQL works it out from the title
+    itself on every write, so it can never fall out of step with what is stored.
+    '''
+
     class Meta:
         ordering = ['-is_pinned', '-last_posted_at', '-id']  # id breaks ties between threads active at the same instant
-        indexes = [models.Index(fields=['forum', '-is_pinned', '-last_posted_at'])]
+        indexes = [
+            models.Index(fields=['forum', '-is_pinned', '-last_posted_at']),
+            GinIndex(fields=['search_vector']),
+        ]
 
     def __str__(self) -> str:
         return self.title
@@ -230,9 +249,20 @@ class Post(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     edited_at = models.DateTimeField(null=True, blank=True)
 
+    search_vector = models.GeneratedField(
+        expression=SearchVector('body_source', config=SEARCH_CONFIG),
+        output_field=SearchVectorField(),
+        db_persist=True,
+    )
+    '''What the member wrote, as PostgreSQL's search sees it. Built from the Markdown
+    rather than the HTML, so searches match the words and not the tags around them.'''
+
     class Meta:
         ordering = ['created_at', 'id']  # id breaks ties between posts made at the same instant
-        indexes = [models.Index(fields=['thread', 'created_at'])]
+        indexes = [
+            models.Index(fields=['thread', 'created_at']),
+            GinIndex(fields=['search_vector']),
+        ]
 
     def __str__(self) -> str:
         return f'Post {self.pk} in {self.thread}'

@@ -37,9 +37,9 @@
       </span>
     </a>
 
-    <form class="hunt" role="search" action="#" method="get">
+    <form class="hunt" role="search" action="{% url 'search' %}" method="get">
       <label class="only-screenreader" for="q">Search the forum</label>
-      <input id="q" name="q" type="search" placeholder="Search threads, routes, members" value="">
+      <input id="q" name="q" type="search" placeholder="Search threads, routes, members" value="{{ search_query|default:'' }}">
       <button type="submit">
         <span class="only-screenreader">Search</span>
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">

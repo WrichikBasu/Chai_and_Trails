@@ -13,7 +13,7 @@
   --sunk:         #f5f8f3;
   --ink:          #12241e;
   --muted:        #566a5f;
-  --faint:        #83968b;
+  --faint:        #667b70;
   --rule:         #d8e0d7;
   --rule-firm:    #c2cfc0;
 
@@ -193,7 +193,7 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   display: block;
   font-size: var(--t-xs);
   letter-spacing: 0.02em;
-  color: #b9d3c8;
+  color: #d5e6dd;
   margin-top: 0.25rem;
 }
 
@@ -207,8 +207,11 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   background: rgba(255, 255, 255, .1);
   color: #fff;
 }
-.hunt input::placeholder { color: #a9c6ba; }
-.hunt input:focus { background: #fff; color: var(--ink); border-color: var(--milestone); }
+.hunt input::placeholder { color: #d5e6dd; }
+/* Focused, the box leaves the masthead's green for a page surface. Both colours come
+   from the theme: a hard-coded white box would put the night theme's near-white text
+   on white, which is how this was written at first and why nothing could be read. */
+.hunt input:focus { background: var(--card); color: var(--ink); border-color: var(--milestone); }
 .hunt input:focus::placeholder { color: var(--faint); }
 .hunt button {
   position: absolute;
@@ -220,7 +223,8 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   cursor: pointer;
   border-radius: 3px;
 }
-.hunt input:focus + button { color: var(--sign); }
+/* The magnifier sits on that surface too, so it takes a colour that reads on both. */
+.hunt input:focus + button { color: var(--link); }
 
 /* --- 5. Primary nav ----------------------------------------------------- */
 
@@ -239,8 +243,7 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   margin-bottom: -1px;
 }
 .mainnav a:hover { color: var(--chai); text-decoration: none; background: var(--sunk); }
-.mainnav a[aria-current="page"] { border-bottom-color: var(--milestone); color: var(--sign); }
-[data-theme="dark"] .mainnav a[aria-current="page"] { color: var(--link); }
+.mainnav a[aria-current="page"] { border-bottom-color: var(--milestone); color: var(--link); }
 
 .mainnav__burger {
   display: none;
@@ -311,7 +314,7 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   color: var(--ink);
   border-color: var(--rule-firm);
 }
-.btn:hover { text-decoration: none; border-color: var(--sign); color: var(--sign); }
+.btn:hover { text-decoration: none; border-color: var(--link); color: var(--link); }
 
 .btn--go { background: var(--milestone); border-color: var(--milestone-lo); color: #241a02; }
 .btn--go:hover { background: var(--milestone-lo); color: #241a02; border-color: var(--milestone-lo); }
@@ -477,6 +480,11 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   border-radius: var(--r-block);
   margin-bottom: 1.25rem;
 }
+/* The search page's own box, under the heading. */
+.searchbar { display: flex; gap: 0.5rem; margin-bottom: 1.25rem; }
+.searchbar .control { flex: 1 1 auto; }
+.searchbar .btn { flex: none; }
+
 /* The line of small print beside a toolbar's filters: how many, or what it is for. */
 .toolbar__note { margin: 0; color: var(--muted); font-size: var(--t-sm); }
 .toolbar__filters { display: flex; gap: 0.4rem; flex-wrap: wrap; }
@@ -488,7 +496,7 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   border: 1px solid transparent;
 }
 .toolbar__filters a:hover { text-decoration: none; border-color: var(--rule-firm); }
-.toolbar__filters a[aria-current] { background: var(--card); border-color: var(--sign); color: var(--sign); font-weight: 700; }
+.toolbar__filters a[aria-current] { background: var(--card); border-color: var(--link); color: var(--link); font-weight: 700; }
 [data-theme="dark"] .toolbar__filters a[aria-current] { color: var(--link); }
 
 .thread {
@@ -507,7 +515,7 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
 .thread__title { font-size: var(--t-md); font-weight: 600; margin: 0 0 0.1rem; display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
 .thread__title a { color: var(--ink); }
 .thread__title a:hover { color: var(--chai); }
-.thread--unread .thread__title a { color: var(--sign); }
+.thread--unread .thread__title a { color: var(--link); }
 [data-theme="dark"] .thread--unread .thread__title a { color: var(--link); }
 
 .thread__meta { font-size: var(--t-sm); color: var(--faint); }
@@ -540,7 +548,7 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   color: var(--muted);
   font-size: var(--t-sm);
 }
-.pager a:hover { border-color: var(--sign); color: var(--sign); text-decoration: none; }
+.pager a:hover { border-color: var(--link); color: var(--link); text-decoration: none; }
 .pager [aria-current] { background: var(--sign); border-color: var(--sign); color: #fff; font-weight: 700; }
 .pager .pager__gap { border: 0; background: none; }
 
@@ -655,6 +663,7 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 1.5rem 0; }
   border-radius: var(--r-ctl);
   padding: 0.6rem 0.75rem;
 }
+.control::placeholder { color: var(--faint); }
 .control:focus { border-color: var(--sign); }
 textarea.control { min-height: 11rem; resize: vertical; }
 
@@ -727,7 +736,7 @@ textarea.control { min-height: 11rem; resize: vertical; }
 /* --- Visual editor (static/js/editor.js, built from frontend/editor) ------- */
 
 .editor--visual:focus-within { border-color: var(--sign); }
-.editor__tools button[aria-pressed="true"] { background: var(--card); border-color: var(--rule-firm); color: var(--sign); }
+.editor__tools button[aria-pressed="true"] { background: var(--card); border-color: var(--rule-firm); color: var(--link); }
 .editor__tools svg { display: block; }
 .editor__separator { width: 1px; align-self: stretch; margin: 0.2rem 0.3rem; background: var(--rule-firm); }
 
@@ -1029,7 +1038,7 @@ textarea.control { min-height: 11rem; resize: vertical; }
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
-  color: #86a89a;
+  color: #9dbdb0;
 }
 
 /* --- 20. Responsive ----------------------------------------------------- */
