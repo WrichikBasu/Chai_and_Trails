@@ -107,8 +107,15 @@ def _write_body(post: Post, author: User, source: str, uploads: Sequence[Prepare
     Posting also clears up after this draft: photos uploaded from the same editor
     but left out of the post are deleted, files and all. Photos from the member's
     other drafts (another tab, another thread) are untouched.
+
+    A claimed photo gives up its draft key. The key only exists to say which
+    unposted photos belong together, so once a post owns the photo it means
+    nothing, and keeping it would leave the key of a draft that no longer exists
+    lying in the table. Only photos still waiting carry one.
     """
-    Attachment.objects.filter(pk__in=photo_ids(source), uploader=author, post__isnull=True).update(post=post)
+    Attachment.objects.filter(pk__in=photo_ids(source), uploader=author, post__isnull=True).update(
+        post=post, draft_key='',
+    )
     added = [save_photo(author, photo, post) for photo in uploads]
     if added:
         source = '\n\n'.join([source.rstrip(), *(photo_markdown(photo.pk) for photo in added)])

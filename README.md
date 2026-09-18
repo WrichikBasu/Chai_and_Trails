@@ -173,7 +173,7 @@ in `forum/rendering.py`.
 uv run python manage.py test forum
 ```
 
-The server-side suite currently contains 223 tests, covering the models and their
+The server-side suite currently contains 225 tests, covering the models and their
 constraints, posting and the counters it maintains, rendering and sanitisation,
 image processing, authentication, the views and their query counts, search, and
 the templates. Django creates a separate test database on the same server and
@@ -325,7 +325,7 @@ forum/                  The application
   rendering.py            Markdown to HTML, followed by sanitisation
   templatetags/           Template filters
   management/commands/    import_forums, rerender_posts
-  migrations/             Database migrations, 0001 to 0011
+  migrations/             Database migrations, 0001 to 0012
   data/forums.json        The board structure read by import_forums
   tests.py                The server-side test suite
 templates/              Page templates; partials/ holds the shared fragments

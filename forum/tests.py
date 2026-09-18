@@ -1395,6 +1395,21 @@ class LeftoverPhotoTests(TestCase):
         self.assertFalse(Attachment.objects.filter(pk=leftover.pk).exists())
         self.assertFalse(any(path.exists() for path in leftover_files))
 
+    def test_a_posted_photo_gives_up_its_draft_key(self) -> None:
+        # The key only groups photos that are still waiting; a post owning the photo ends that.
+        placed = self.waiting_photo()
+        self.assertEqual(placed.draft_key, self.draft)
+        self.reply(f'Here it is.\n\n![a](attachment:{placed.pk})')
+        placed.refresh_from_db()
+        self.assertEqual(placed.draft_key, '')
+
+    def test_only_waiting_photos_carry_a_draft_key(self) -> None:
+        kept, elsewhere = self.waiting_photo(), self.waiting_photo(draft=self.other_draft)
+        self.reply(f'Here it is.\n\n![a](attachment:{kept.pk})')
+        self.assertFalse(Attachment.objects.filter(post__isnull=False).exclude(draft_key='').exists())
+        elsewhere.refresh_from_db()
+        self.assertEqual(elsewhere.draft_key, self.other_draft)  # still waiting, still keyed
+
     def test_another_tabs_draft_is_left_alone(self) -> None:
         mine, elsewhere = self.waiting_photo(), self.waiting_photo(draft=self.other_draft)
         self.reply('Just words.')
