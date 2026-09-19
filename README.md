@@ -1,4 +1,4 @@
-# Chai & Trails
+# Chai & Trails<sup>®</sup>
 
 A discussion forum for road trips, treks and slow journeys across India. The
 application provides a category and forum hierarchy, threaded discussions with
