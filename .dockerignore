@@ -1,0 +1,23 @@
+# Keep credentials out of the image: settings.py reads .env when it is present,
+# but the init service is given its variables by Compose instead.
+.env
+
+.git
+.gitignore
+.venv
+venv
+__pycache__
+**/__pycache__
+*.py[cod]
+
+# Developer tooling and docs, none of it needed to migrate or import.
+.idea
+.claude
+README.md
+LICENSE
+Dockerfile
+.dockerignore
+compose.yaml
+
+# Runtime state that belongs to the host, not the image.
+media

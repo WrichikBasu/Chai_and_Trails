@@ -61,34 +61,51 @@ uv run python -c "from django.core.management.utils import get_random_secret_key
 A password of the developer's choosing is then entered for `DB_PASSWORD`. The
 remaining fields may be left at their template values.
 
-### 3.2 Database container
+### 3.2 Database container, schema and initial data
 
 ```sh
 docker compose up -d --wait
 ```
 
 This starts PostgreSQL 18 using the credentials from `.env` and stores its data
-in a Docker named volume, `chai_and_trails_pgdata`. The `--wait` flag causes the
-command to return only once the server is accepting connections.
+in a Docker named volume, `chai_and_trails_pgdata`, then prepares that database
+before returning. Three services run in sequence:
 
-### 3.3 Schema and initial data
+| Service | Role |
+| --- | --- |
+| `db` | PostgreSQL 18. Its health check reports when the server accepts connections. |
+| `init` | Runs `migrate` and then `import_forums` against `db`, and exits. |
+| `ready` | Runs `migrate --check`, confirming the schema is in place, and exits. |
+
+`init` creates the database schema and populates the board structure — categories,
+forums, subforums and a set of sample threads — from `forum/data/forums.json`.
+Both of its commands are repeatable, so the service runs on every `up`: `migrate`
+skips migrations already applied, and `import_forums` updates the records it
+matches rather than duplicating them.
+
+`ready` exists because `up --wait` treats a container that exited with a failure
+as healthy, which would let a broken `init` pass unnoticed. A service that waits
+on `init` completing *successfully* makes that failure fatal instead, so the
+command's exit status can be trusted:
 
 ```sh
-uv run python manage.py migrate
-uv run python manage.py import_forums
+docker compose up -d --wait || docker compose logs init
 ```
 
-The first command creates the database schema. The second populates the board
-structure — categories, forums, subforums and a set of sample threads — from
-`forum/data/forums.json`.
+The `init` and `ready` services are built from the `Dockerfile` in the repository
+root, which installs the locked dependencies into a Python 3.14 image. The first
+`up` therefore builds that image and takes noticeably longer than later ones.
+`.env` is deliberately excluded from the image by `.dockerignore`; Compose passes
+the variables to the containers instead, overriding `DB_HOST` and `DB_PORT` with
+the service name `db` and port 5432, which are what apply on the Compose network.
 
-No separate installation or compilation step is required for the Python code.
+Nothing further is required to run the Python code on the host.
 `uv run` reads `pyproject.toml` and `uv.lock`, creates the virtual environment in
 `.venv/` if it is absent, and installs the locked dependencies before executing
 the command. The first invocation therefore takes noticeably longer than
 subsequent ones.
 
-### 3.4 Administrative account
+### 3.3 Administrative account
 
 The imported sample members exist only to populate the discussion threads. Each
 is created with an unusable password hash, so none of them can sign in, and none
@@ -103,7 +120,7 @@ The command prompts for a username, an email address and a password. The passwor
 is validated against Django's configured validators and stored as an Argon2id
 hash; it is never written to disk in plain form.
 
-### 3.5 Running the application
+### 3.4 Running the application
 
 ```sh
 uv run python manage.py runserver
@@ -131,6 +148,23 @@ The `.env` file is excluded from version control, as it holds live credentials.
 `DB_NAME`, `DB_USER` and `DB_PASSWORD` are applied by the PostgreSQL image only
 when the data volume is first created. Altering them afterwards has no effect on
 an existing database; section 10.3 describes how to start afresh.
+
+`DB_HOST` and `DB_PORT` describe the route from the *host* to the published port,
+which is what Django uses when run through `uv run`. They do not describe the
+route between containers, so `compose.yaml` overrides them for `init` and `ready`
+with the service name `db` and port 5432. Settings read the real environment
+ahead of `.env`, so those overrides take effect inside the containers only.
+
+Running two projects from this file at once — `docker compose -p other up -d
+--wait` — gives each its own `pgdata` volume, but both read the same `.env` and so
+compete for the same published port. The second needs one of its own:
+
+```sh
+DB_PORT=5433 docker compose -p other up -d --wait
+```
+
+Django on the host then needs the same `DB_PORT=5433` to reach that project
+rather than the first.
 
 ---
 
@@ -164,6 +198,47 @@ Regenerates the stored HTML of every post from its original Markdown. Each post
 retains both the Markdown its author wrote and the HTML that pages display, so
 this command is required after any change to the rendering or sanitisation rules
 in `forum/rendering.py`.
+
+### 5.1 Choosing which database a command runs against
+
+A normal `up` imports into the right project without any of this; the two forms
+below are for running a command again against a project that is already up.
+
+Several Compose projects started from this file each own a separate `pgdata`
+volume, and therefore a separate database. `manage.py` takes no host or port
+option, so the target is chosen through the environment or through Compose.
+
+**From the host, by published port.** Settings read `DB_HOST` and `DB_PORT` from
+the real environment ahead of `.env`, so a prefix redirects any command:
+
+```sh
+uv run python manage.py import_forums                # the port in .env
+DB_PORT=5433 uv run python manage.py import_forums   # the project published on 5433
+```
+
+**Inside the project, by project name.** The trailing arguments override the
+`init` service's own command, and `DB_HOST` comes from `compose.yaml`, so there
+is no port to get wrong:
+
+```sh
+docker compose -p other run --rm --no-deps init python manage.py import_forums
+```
+
+`--no-deps` is required. Without it, Compose re-evaluates the `db` service
+against the current environment — where `${DB_PORT:-5432}` falls back to 5432
+rather than the value the container was created with — finds the configuration
+changed and recreates it. The replacement then fails to bind a port another
+project already holds, leaving `db` stopped and the command timing out against
+it. Passing the project's own `DB_PORT` avoids the recreation equally well:
+
+```sh
+DB_PORT=5433 docker compose -p other run --rm init python manage.py import_forums
+```
+
+The second form suits any of the commands above, `rerender_posts` and
+`createsuperuser` included. Note that a command run this way writes to the
+container's filesystem, not the host's, so anything touching `media/` belongs on
+the host instead.
 
 ---
 
@@ -332,7 +407,9 @@ templates/              Page templates; partials/ holds the shared fragments
 static/                 css/, js/, img/ — served by Django during development
 frontend/editor/        Source of static/js/editor.js
 media/                  Uploaded photographs (excluded from version control)
-compose.yaml            The PostgreSQL service definition
+compose.yaml            The db, init and ready service definitions
+Dockerfile              Image for init and ready; installs the locked dependencies
+.dockerignore           Keeps .env, .venv and media out of that image
 ```
 
 ---
@@ -392,8 +469,12 @@ A deliberate reset is occasionally required — in particular, changing `DB_USER
 
 ```sh
 docker compose down -v && docker compose up -d --wait
-uv run python manage.py migrate && uv run python manage.py import_forums
 ```
+
+The `init` service repopulates the new volume as part of that `up`, so no
+separate `migrate` or `import_forums` is needed afterwards. Only the
+administrative account of section 3.3 has to be recreated, as it is not part of
+the imported sample data.
 
 ---
 

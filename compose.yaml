@@ -1,3 +1,19 @@
+# Shared by the two short-lived Django containers below. Both run the project's
+# own image and talk to the db service over the Compose network.
+x-django: &django
+  build: .
+  restart: "no"
+  environment:
+    DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY must be set in .env}
+    DB_NAME: ${DB_NAME:?DB_NAME must be set in .env}
+    DB_USER: ${DB_USER:?DB_USER must be set in .env}
+    DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    # The service name on the Compose network, and the port Postgres listens on
+    # inside it. DB_HOST and DB_PORT in .env describe the published port that
+    # Django uses from the host, and do not apply in here.
+    DB_HOST: db
+    DB_PORT: 5432
+
 services:
   db:
     image: postgres:18
@@ -16,6 +32,32 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # Prepares the database the first time a project's volume is created, and
+  # brings it up to date on every subsequent `up`. Both commands are repeatable:
+  # migrate skips what is already applied, and import_forums updates the records
+  # it matches instead of duplicating them. The container exits when they finish.
+  init:
+    <<: *django
+    depends_on:
+      db:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - python manage.py migrate && python manage.py import_forums
+
+  # `up --wait` reports a container that exited non-zero as healthy, so a failed
+  # init would otherwise pass unnoticed — the very thing that hides a missing
+  # import. A service that waits on init completing *successfully* does make the
+  # failure fatal, and `migrate --check` is a cheap assertion that the schema the
+  # host's Django expects is really in place.
+  ready:
+    <<: *django
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    command: ["python", "manage.py", "migrate", "--check"]
 
 volumes:
   pgdata:
