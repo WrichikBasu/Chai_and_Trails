@@ -216,12 +216,12 @@ uv run python manage.py import_forums                # the port in .env
 DB_PORT=5433 uv run python manage.py import_forums   # the project published on 5433
 ```
 
-**Inside the project, by project name.** The trailing arguments override the
-`init` service's own command, and `DB_HOST` comes from `compose.yaml`, so there
-is no port to get wrong:
+**Inside the project, by project name.** The `init` service already points at
+its own project's `db`, as `DB_HOST` comes from `compose.yaml`, so there is no
+port to get wrong. Run bare, it repeats its own `migrate` and `import_forums`:
 
 ```sh
-docker compose -p other run --rm --no-deps init python manage.py import_forums
+docker compose -p other run --rm --no-deps init
 ```
 
 `--no-deps` is required. Without it, Compose re-evaluates the `db` service
@@ -232,13 +232,21 @@ project already holds, leaving `db` stopped and the command timing out against
 it. Passing the project's own `DB_PORT` avoids the recreation equally well:
 
 ```sh
-DB_PORT=5433 docker compose -p other run --rm init python manage.py import_forums
+DB_PORT=5433 docker compose -p other run --rm init
 ```
 
-The second form suits any of the commands above, `rerender_posts` and
-`createsuperuser` included. Note that a command run this way writes to the
-container's filesystem, not the host's, so anything touching `media/` belongs on
-the host instead.
+Either form accepts a trailing command for the other tasks above,
+`rerender_posts` and `createsuperuser` included:
+
+```sh
+docker compose -p other run --rm --no-deps init python manage.py rerender_posts
+```
+
+Trailing arguments *replace* the service's command rather than adding to it, so
+`migrate` does not run and the schema must already be in place. On a project
+whose volume was just created, the bare form above is the one that works.
+Note also that a command run this way writes to the container's filesystem, not
+the host's, so anything touching `media/` belongs on the host instead.
 
 ---
 
